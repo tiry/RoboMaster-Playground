@@ -6,7 +6,7 @@ import math
 class Chassis:
 
     TAIL_SIZE=500
-
+    
     def __init__(self, img, fps):
         self.img=img
         self.pos = Vector(0,0,0)
@@ -35,7 +35,6 @@ class Chassis:
 
         screen.blit(sprite, new_rect.topleft)    
 
-
     def _drawTail(self, screen):
         l=len(self._tail)
         idx=0
@@ -43,7 +42,6 @@ class Chassis:
             idx+=1
             c = 255-(200* (l-idx)/l)
             screen.set_at([int(t.x),int(t.y)], (c,c,c))
-
 
     def _getLastPosition(self):
         prev = Vector(self.pos)
@@ -54,9 +52,35 @@ class Chassis:
     def move(self,x,y,z, sxy=1, sz=30):
         dxy = Vector(x,y,0).norm()
 
-        ## linear interpolation => need to check actual behavior
-        nbSteps = int(max(abs(dxy/(sxy/self.fps)), abs(z/(sz/self.fps))))
+        ## first RM will execute the rotation
+        nbSteps = math.ceil(abs(z/(sz/self.fps)))
+        cp = self._getLastPosition()
         
+        for i in range(nbSteps):
+            cp = self._getLastPosition()                
+            cp += Vector(0,0,(1/nbSteps)*z)
+            print(cp)
+            self._positions.append(cp.round(3))
+
+        ## then we execute the x/y moves 
+        nbSteps = math.ceil(abs(dxy/(sxy/self.fps)))        
+        for i in range(nbSteps):
+            cp = self._getLastPosition()
+        
+            dx = (1/nbSteps)*x* math.cos(cp.z/360 *(2*math.pi)) + (1/nbSteps)*y* math.cos((cp.z+90)/360 *(2*math.pi))
+            dy = (1/nbSteps)*x* math.sin(cp.z/360 *(2*math.pi)) + (1/nbSteps)*y* math.sin((cp.z+90)/360 *(2*math.pi))        
+            cp += Vector(dx,dy,0)
+            print(cp)
+            self._positions.append(cp.round(3))
+
+    def moveLinearInterpolate(self,x,y,z, sxy=1, sz=30):
+        ## linear interpolation of move + angle
+        # => this is not what the RM is doing (sadly)
+
+        dxy = Vector(x,y,0).norm()
+
+        nbSteps = int(max(abs(dxy/(sxy/self.fps)), abs(z/(sz/self.fps))))
+
         print("Steps = {0}".format(nbSteps))
         cp = self._getLastPosition()
         
@@ -69,12 +93,11 @@ class Chassis:
         
             cp += Vector(dx,dy,(1/nbSteps)*z)
             print(cp)
-            self._positions.append(cp.round(2))
+            self._positions.append(cp.round(3))
 
-    def _moveOld(self,x,y,z, sxy=1, sz=30):
+    def moveSimpleInterpolate(self,x,y,z, sxy=1, sz=30):
         dxy = Vector(x,y,0).norm()
 
-        ## linear interpolation => need to check actual behavior
         nbSteps = int(max(abs(dxy/(sxy/self.fps)), abs(z/(sz/self.fps))))
         cp = self._getLastPosition()        
         dx = x* math.cos(cp.z/360 *(2*math.pi)) + y* math.cos((cp.z+90)/360 *(2*math.pi))
