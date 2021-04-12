@@ -47,7 +47,7 @@ def main():
   for sim in tracks:
     sim.genMoves()
  
-  setCurrentTrack(7)
+  setCurrentTrack(0)
   
   curTrack['track'].loadMoves(chassis)
 
@@ -75,8 +75,8 @@ def main():
         print (event.key)
  
     screen.fill((0,0,0))
-    screen.set_at([center.x,center.y],(255,255,255))
     curTrack['track'].renderSimulation(screen, center, 200, chassis)
+    screen.set_at([center.x,center.y],(255,150,150))
     pygame.display.flip()
  
 if __name__ == "__main__":

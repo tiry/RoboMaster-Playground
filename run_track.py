@@ -22,8 +22,6 @@ if __name__ == '__main__':
     #track=robotrack.TestVelocity()
     track=robotrack.Calibrate()
 
-
-
     track.genMoves()
     track.loadMoves(chassis)
 

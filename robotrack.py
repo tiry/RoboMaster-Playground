@@ -57,7 +57,7 @@ class CircleAround(RoboTrack):
         speedRatio=4
         
         for i in range(0,nbSteps):
-            self.addMove(x=0,y=-yStep,z=alpha, sxy=speedRatio*yStep, sz=speedRatio*alpha)   
+            self.addMove(x=0,y=yStep,z=alpha, sxy=speedRatio*yStep, sz=speedRatio*alpha)   
             
         self.addMove(x=r,y=0,z=0, sxy=2, sz=30)   
 
@@ -73,14 +73,24 @@ class DrawBox(RoboTrack):
 
 class Calibrate(RoboTrack):
 
-    def genMoves(self):
+    def makeCross(self):
         self.addMove(1,0,0)
         self.addMove(-1,0,0)
         self.addMove(0,1,0)
         self.addMove(0,-1,0)
-        self.addMove(0,1,-45)
+        self.addMove(1,0,-45)
+        self.addMove(-1,0,0)
+        self.addMove(0,0,90)
+        self.addMove(0,1,0)
         self.addMove(0,-1,0)
-        self.addMove(0,0,45)
+        self.addMove(0,0,-45)
+
+    def genMoves(self):
+        self.makeCross()
+        for i in range(4):
+            self.addMove(0,0,90)
+            self.makeCross()
+
 
 class SimRBox(RoboTrack):
 

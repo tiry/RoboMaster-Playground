@@ -6,7 +6,7 @@ import math
 class Chassis:
 
     TAIL_SIZE=500
-    
+
     def __init__(self, img, fps):
         self.img=img
         self.pos = Vector(0,0,0)
@@ -26,12 +26,14 @@ class Chassis:
             self._nextPosition()
         sprite = pygame.transform.rotate(self.img, self.pos.z)
         
-        targetVector=Vector(center.x+self.pos.x*scale-self.w/2, center.y-self.pos.y*scale-self.h/2, self.pos.z)
+        targetVector=Vector(center.x+self.pos.x*scale-0*self.w/2, center.y+self.pos.y*scale-0*self.h/2, self.pos.z)
         self._appendToTail(targetVector)
         target = (targetVector.x-self.w/2, targetVector.y-self.h/2)
         new_rect = sprite.get_rect(center = self.img.get_rect(topleft = target).center) 
 
         self._drawTail(screen)
+        ##screen.set_at([int(targetVector.x),int(targetVector.y)],(150,255,150))
+    
 
         screen.blit(sprite, new_rect.topleft)    
 
@@ -67,10 +69,15 @@ class Chassis:
         for i in range(nbSteps):
             cp = self._getLastPosition()
         
-            dx = (1/nbSteps)*x* math.cos(cp.z/360 *(2*math.pi)) + (1/nbSteps)*y* math.cos((cp.z+90)/360 *(2*math.pi))
-            dy = (1/nbSteps)*x* math.sin(cp.z/360 *(2*math.pi)) + (1/nbSteps)*y* math.sin((cp.z+90)/360 *(2*math.pi))        
+            a1=cp.z/360 *(2*math.pi)
+            a2=(cp.z-90)/360 *(2*math.pi)
+
+            dx = (1/nbSteps)*x* math.cos(a1) + (1/nbSteps)*y* math.cos(a2)
+            dy = -(1/nbSteps)*x* math.sin(a1) - (1/nbSteps)*y* math.sin(a2)        
+            
             cp += Vector(dx,dy,0)
-            print(cp)
+            #print(cp)
+            
             self._positions.append(cp.round(3))
 
     def moveLinearInterpolate(self,x,y,z, sxy=1, sz=30):
