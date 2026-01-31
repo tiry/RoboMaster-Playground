@@ -1,14 +1,15 @@
 # RoboMaster Playground
 
-A playground for DJI RoboMaster robot experimentation, including simulation and track control capabilities. This project provides tools for controlling RoboMaster robots, simulating movement tracks, and experimenting with mecanum wheel kinematics.
+A playground for DJI RoboMaster robot experimentation, including simulation, CLI control, and joystick support. This project provides tools for controlling RoboMaster robots, simulating movement, and experimenting with mecanum wheel kinematics.
 
 ## Features
 
-- **Robot Control**: Connect to and control DJI RoboMaster robots via WiFi
+- **CLI Interface**: Command-line tools for robot control (`robomaster` command)
+- **Joystick Control**: Drive your robot with Xbox/PS5 controllers
+- **Simulation Mode**: Test controls without a physical robot
+- **Video Streaming**: Live video feed from robot camera
+- **Robot Info**: Query battery, sensors, gimbal, arm status
 - **Track Simulation**: Visualize robot movement patterns using pygame
-- **Movement Tracks**: Pre-defined movement patterns (circles, boxes, zigzags, etc.)
-- **Video Capture**: Stream and process video from the robot camera
-- **Custom Vector Math**: Lightweight vector operations for robotics calculations
 
 ## Prerequisites
 
@@ -16,21 +17,18 @@ A playground for DJI RoboMaster robot experimentation, including simulation and 
 - DJI RoboMaster EP/S1 robot (for physical robot control)
 - WiFi connection to the robot (for physical robot control)
 - FFmpeg development libraries (for video decoding)
+- USB game controller (for joystick control)
 
 ## Installation
 
-This project uses a [forked RoboMaster SDK](https://github.com/tiry/RoboMaster-SDK) that has been updated for modern FFmpeg (5.x+) and Python (3.8+) compatibility.
-
-### Prerequisites
-
-System dependencies needed for building `libmedia_codec`:
+### System Dependencies
 
 ```bash
 # Ubuntu/Debian
 sudo apt-get install cmake libopus-dev libavcodec-dev libavformat-dev libswscale-dev python3-dev
 
 # Arch Linux
-sudo pacman -S cmake opus ffmpeg python
+sudo pacman -S cmake opus ffmpeg python dkms linux-headers
 
 # macOS
 brew install cmake opus ffmpeg python
@@ -54,137 +52,205 @@ pip install /tmp/RoboMaster-SDK/lib/libmedia_codec
 # Install robomaster SDK
 pip install git+https://github.com/tiry/RoboMaster-SDK.git
 
-# Install this project
+# Install this project (includes CLI)
 pip install -e .
 ```
 
-### Quick Install (Simulation Only)
+### Xbox Controller Setup (Linux)
 
-If you only need the simulation mode (no physical robot):
+For Xbox controller support on Linux, install the xone driver:
 
 ```bash
-git clone https://github.com/tiry/RoboMaster-Playground.git
-cd RoboMaster-Playground
-pip install pygame numpy opencv-python
-python basic_simu/simulate_track.py
+# Install DKMS and headers
+sudo pacman -S dkms linux-headers  # Arch
+# or: sudo apt install dkms linux-headers-$(uname -r)  # Debian/Ubuntu
+
+# Install xone driver
+git clone https://github.com/medusalix/xone.git /tmp/xone
+cd /tmp/xone && sudo ./install.sh
+
+# Add yourself to input group
+sudo usermod -aG input $USER
+# Log out and back in
 ```
 
-## Usage
+## CLI Usage
+
+After installation, the `robomaster` command is available:
+
+```bash
+robomaster --help              # Show all commands
+robomaster --version           # Show version
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `robomaster info` | Get robot information (version, battery, sensors) |
+| `robomaster video` | Open live video stream from robot camera |
+| `robomaster drive` | Drive robot with USB joystick |
+| `robomaster control-config` | Configure and test your game controller |
+
+### Get Robot Info
+
+```bash
+robomaster info                # Basic info with 1.5s sensor collection
+robomaster info -w 3           # Wait 3 seconds for more sensor data
+```
+
+Displays:
+- Robot version and serial number
+- Battery level
+- Chassis position, attitude, velocity
+- Gimbal angle (if available)
+- Robotic arm position (if available)
+- Gripper and servo status
+
+### Video Streaming
+
+```bash
+robomaster video               # Open video stream (360p default)
+robomaster video -res 720p     # Higher resolution
+```
+
+Press 'q' or ESC to quit.
+
+### Joystick Control
+
+#### 1. Configure Your Controller
+
+First, test that your controller is detected:
+
+```bash
+robomaster control-config
+```
+
+This shows real-time axis and button values to help configure your controller.
+
+#### 2. Drive in Simulation Mode
+
+Test the controls without connecting to a robot:
+
+```bash
+robomaster drive --simu
+```
+
+**Controls:**
+- **Left stick**: Move forward/backward, strafe left/right
+- **Right stick X**: Rotate robot
+- **q/ESC**: Quit
+
+#### 3. Drive the Real Robot
+
+Connect to your robot's WiFi, then:
+
+```bash
+robomaster drive               # With video feed
+robomaster drive --no-video    # Without video (lower latency)
+robomaster drive -m step       # Discrete step mode
+```
+
+**Options:**
+- `--simu`: Simulation mode (no robot connection)
+- `--no-video`: Disable video feed
+- `-m continuous`: Real-time speed control (default)
+- `-m step`: Discrete movements
+- `-res 720p`: Video resolution (360p/540p/720p)
+
+### Configuration
+
+Edit `cli/config.py` to adjust:
+
+- **Controller mapping**: Axis/button indices for your controller
+- **Deadzone**: Ignore small stick movements (default 0.15)
+- **Movement speeds**: Step sizes and max speeds
+- **Gimbal/Arm settings**: Control sensitivity
+
+## Legacy Usage
 
 ### Simulation Mode (No Robot Required)
 
-Run the track simulation to visualize robot movement patterns:
+Run the track simulation:
 
 ```bash
 python basic_simu/simulate_track.py
 ```
 
 **Controls:**
-- **Up Arrow**: Previous track
-- **Down Arrow**: Next track
-- **Left/Right Arrow**: Replay current track
+- **Up/Down Arrow**: Change track
+- **Left/Right Arrow**: Replay
 
-Available tracks:
-- CircleAround
-- DrawBox
-- SimRBox
-- Simple360
-- ZigZag
-- CrossLines
-- TestVelocity
-- Calibrate
-
-### Robot Control (Requires RoboMaster Robot)
-
-1. **Connect your RoboMaster robot** to your computer via WiFi (station mode)
-
-2. **Run a track on the robot:**
-   ```bash
-   python run_track.py
-   ```
-
-3. **Test connection and video feed:**
-   ```bash
-   python test_connection.py
-   ```
-   This will connect to the robot, display version/battery info, and show the live video feed. Press 'q' or ESC to quit.
-
-### Video Capture (Robot Camera)
-
-Capture live video from the robot's camera:
+### Run Pre-defined Tracks
 
 ```bash
-python video-cap.py
+python run_track.py
 ```
-
-Press any key to exit.
 
 ## Project Structure
 
 ```
 RoboMaster-Playground/
-├── pyproject.toml       # Project configuration and dependencies
-├── README.md            # This file
-├── vector.py            # Custom Vector class for math operations
-├── robotrack.py         # Track definitions (movement patterns)
-├── mecanum.py           # Mecanum wheel kinematics
-├── run_track.py         # Execute tracks on physical robot
-├── connect.py           # Basic robot connection and control
-├── video-cap.py         # Robot video capture
-├── test_connection.py   # Connection and video test
-├── test_*.py            # Other test files
-└── basic_simu/          # Simulation code (no robot required)
-    ├── simulate_track.py    # Pygame-based track simulation
-    ├── sim_chassis.py       # Simulated chassis for visualization
-    ├── anim.py              # Animation utilities
-    └── img/                 # Images for simulation
-        └── Robo-Top-mini.png
+├── pyproject.toml           # Project config and dependencies
+├── README.md                # This file
+├── cli/                     # CLI commands
+│   ├── __init__.py          # CLI entry point
+│   ├── config.py            # Controller and movement config
+│   ├── connection.py        # Robot connection context manager
+│   ├── control_config.py    # Controller configuration helper
+│   ├── drive.py             # Joystick drive command
+│   ├── info.py              # Robot info command
+│   └── video.py             # Video stream command
+├── basic_simu/              # Simulation code
+│   ├── simulate_track.py    # Track simulation
+│   ├── sim_chassis.py       # Simulated chassis
+│   └── img/                 # Robot images
+└── old/                     # Legacy scripts
 ```
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
-| `robomaster` | DJI RoboMaster SDK for robot control |
-| `opencv-python` | Computer vision and video processing |
+| `robomaster` | DJI RoboMaster SDK |
+| `opencv-python` | Video processing |
+| `pygame` | Joystick input and simulation display |
+| `click` | CLI framework |
 | `numpy` | Numerical computations |
-| `pygame` | Graphics and simulation display |
-
-## Creating Custom Tracks
-
-You can create your own movement tracks by subclassing `RoboTrack`:
-
-```python
-from robotrack import RoboTrack
-
-class MyCustomTrack(RoboTrack):
-    def genMoves(self):
-        # addMove(x, y, z, speed_xy, speed_z)
-        # x, y = distance in meters
-        # z = rotation in degrees
-        self.addMove(1, 0, 0, 1)   # Move forward 1m
-        self.addMove(0, 0, 90)     # Rotate 90 degrees
-        self.addMove(0, 1, 0, 1)   # Move left 1m
-```
 
 ## Troubleshooting
 
+### Controller Not Detected
+
+1. Check if user is in `input` group:
+   ```bash
+   groups $USER
+   ```
+
+2. Add to input group if needed:
+   ```bash
+   sudo usermod -aG input $USER
+   # Log out and back in
+   ```
+
+3. Check for `/dev/input/js0`:
+   ```bash
+   ls -la /dev/input/js*
+   ```
+
+4. For Xbox: Install xone driver (see Installation)
+5. For PS5: May need `hid-playstation` driver
+
 ### Connection Issues
-- Ensure your RoboMaster is in station mode (WiFi router mode)
-- Check that your computer is connected to the robot's WiFi network
-- The robot's IP is typically `192.168.2.1`
 
-### Display Issues in Simulation
-- Make sure pygame is properly installed
-- On headless systems, you may need to install additional display libraries
+- Ensure robot is in station mode (WiFi router mode)
+- Connect to robot's WiFi network
+- Robot IP is typically `192.168.2.1`
 
-### RoboMaster SDK Issues
-This project uses a [forked SDK](https://github.com/tiry/RoboMaster-SDK) that fixes compatibility with modern systems:
-- Updated FFmpeg API calls for FFmpeg 5.x/6.x/7.x/8.x
-- Updated pybind11 to v2.11 for Python 3.10+ support
-- Updated cmake requirements
+### Video Issues
 
-If you encounter build issues, ensure you have the FFmpeg development libraries installed (see Prerequisites).
+- Install FFmpeg libraries (see Prerequisites)
+- Try lower resolution: `robomaster video -res 360p`
 
 ## License
 
@@ -192,4 +258,4 @@ MIT License
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit issues and pull requests.
+Contributions welcome! Feel free to submit issues and pull requests.

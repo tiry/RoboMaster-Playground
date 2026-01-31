@@ -4,6 +4,7 @@ RoboMaster CLI - Command line interface for controlling RoboMaster robots.
 Usage:
     robomaster info      - Get robot information
     robomaster video     - Open video feed
+    robomaster drive     - Drive robot with USB joystick
     
 Add new commands by creating a new module in the cli/ folder.
 """
@@ -11,6 +12,8 @@ Add new commands by creating a new module in the cli/ folder.
 import click
 from .info import info
 from .video import video
+from .drive import drive
+from .control_config import control_config
 
 
 @click.group()
@@ -23,6 +26,8 @@ def cli():
 # Register commands from separate modules
 cli.add_command(info)
 cli.add_command(video)
+cli.add_command(drive)
+cli.add_command(control_config)
 
 
 def main():

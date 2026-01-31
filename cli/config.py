@@ -1,0 +1,101 @@
+"""
+Configuration for joystick mapping and movement parameters.
+
+Run 'robomaster control-config' to identify your controller's mappings.
+"""
+
+# =============================================================================
+# CONTROLLER PRESETS
+# Uncomment the preset matching your controller, or create your own
+# =============================================================================
+
+# --- Xbox Series S|X Controller ---
+JOYSTICK_AXES = {
+    'left_x': 0,      # Left stick X: strafe left/right
+    'left_y': 1,      # Left stick Y: forward/backward
+    'right_x': 3,     # Right stick X: rotate left/right
+    'right_y': 4,     # Right stick Y: arm/gimbal up/down
+    'left_trigger': 2,
+    'right_trigger': 5,
+}
+
+JOYSTICK_BUTTONS = {
+    'a': 0,           # A button (action)
+    'b': 1,           # B button (cancel)
+    'x': 2,           # X button
+    'y': 3,           # Y button
+    'lb': 4,          # Left bumper
+    'rb': 5,          # Right bumper
+    'back': 6,        # Back/View button
+    'start': 7,       # Start/Menu button
+    'guide': 8,       # Xbox button
+    'left_stick': 9,  # Left stick click
+    'right_stick': 10,# Right stick click
+}
+
+# --- Xbox Controller (uncomment to use) ---
+# JOYSTICK_AXES = {
+#     'left_x': 0,
+#     'left_y': 1,
+#     'right_x': 3,     # Note: Xbox often uses 3 for right X
+#     'right_y': 4,     # And 4 for right Y
+#     'left_trigger': 2,
+#     'right_trigger': 5,
+# }
+#
+# JOYSTICK_BUTTONS = {
+#     'a': 0,
+#     'b': 1,
+#     'x': 2,
+#     'y': 3,
+#     'lb': 4,
+#     'rb': 5,
+#     'back': 6,
+#     'start': 7,
+#     'guide': 8,
+#     'left_stick': 9,
+#     'right_stick': 10,
+# }
+
+# Deadzone - ignore small stick movements
+DEADZONE = 0.15
+
+# Movement configuration
+MOVEMENT = {
+    # Step sizes (for discrete moves)
+    'step_forward': 0.1,     # meters per step
+    'step_strafe': 0.1,      # meters per step
+    'step_rotate': 10,       # degrees per step
+    
+    # Speeds
+    'speed_xy': 0.5,         # m/s for forward/strafe
+    'speed_z': 60,           # deg/s for rotation
+    
+    # Move interval
+    'move_interval': 0.1,    # seconds between move commands
+    
+    # For continuous mode (drive_speed API)
+    'continuous_speed_xy': 0.3,  # m/s max speed in continuous mode
+    'continuous_speed_z': 90,    # deg/s max rotation speed
+}
+
+# Gimbal/Arm movement
+GIMBAL = {
+    'step_pitch': 5,         # degrees per step
+    'step_yaw': 5,           # degrees per step
+    'speed': 30,             # deg/s
+}
+
+ARM = {
+    'step_x': 5,             # mm per step
+    'step_y': 5,             # mm per step
+}
+
+
+def apply_deadzone(value, deadzone=DEADZONE):
+    """Apply deadzone to joystick value (-1 to 1)."""
+    if abs(value) < deadzone:
+        return 0.0
+    # Scale remaining range
+    sign = 1 if value > 0 else -1
+    return sign * (abs(value) - deadzone) / (1 - deadzone)
