@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robomaster-playground"
+version = "0.1.0"
+description = "A playground for DJI RoboMaster robot experimentation, including simulation and track control"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Tiry"}
+]
+keywords = ["robomaster", "dji", "robot", "simulation", "mecanum"]
+
+dependencies = [
+    "click>=8.0.0",
+    "opencv-python>=4.5.0",
+    "numpy>=1.19.0",
+    "pygame>=2.0.0",
+]
+
+[project.optional-dependencies]
+robot = [
+    "robomaster @ git+https://github.com/tiry/RoboMaster-SDK.git",
+]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/tiry/RoboMaster-Playground"
+"Repository" = "https://github.com/tiry/RoboMaster-Playground.git"
+
+[project.scripts]
+robomaster = "cli:main"
+
+[tool.setuptools]
+py-modules = ["vector", "robotrack", "mecanum"]
+packages = ["basic_simu", "cli"]

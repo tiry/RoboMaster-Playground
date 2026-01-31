@@ -1,4 +1,11 @@
 
+import os
+import sys
+
+# Add parent directory to path to import vector
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
 from vector import Vector
 import pygame
 import math
