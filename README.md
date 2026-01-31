@@ -34,6 +34,18 @@ sudo pacman -S cmake opus ffmpeg python dkms linux-headers
 brew install cmake opus ffmpeg python
 ```
 
+### Forked RoboMaster SDK
+
+This project uses a [forked RoboMaster SDK](https://github.com/tiry/RoboMaster-SDK) instead of the official DJI SDK because:
+
+1. **Modern FFmpeg compatibility** - The official SDK uses deprecated FFmpeg APIs that don't compile with FFmpeg 5.x/6.x/7.x/8.x
+2. **Python 3.10+ support** - Updated pybind11 to v2.11 for modern Python compatibility
+3. **Updated cmake requirements** - Works with modern toolchains
+
+The fork maintains full API compatibility with the official SDK while fixing build issues on modern systems.
+
+**Fork repository:** https://github.com/tiry/RoboMaster-SDK
+
 ### Installation Steps
 
 ```bash
