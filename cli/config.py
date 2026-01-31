@@ -60,6 +60,13 @@ JOYSTICK_BUTTONS = {
 # Deadzone - ignore small stick movements
 DEADZONE = 0.15
 
+# SDK Chassis Mode - stick_overlay (fusion mode)
+# Controls how SDK commands combine with physical controller input:
+#   0 = SDK only (default) - SDK commands control robot, physical controller disabled
+#   1 = Overlay (body) - SDK + physical controller, speed relative to robot body
+#   2 = Overlay (gimbal) - SDK + physical controller, speed relative to gimbal direction
+STICK_OVERLAY_MODE = 0
+
 # Movement configuration
 MOVEMENT = {
     # Step sizes (for discrete moves)
@@ -77,18 +84,15 @@ MOVEMENT = {
     # For continuous mode (drive_speed API)
     'continuous_speed_xy': 0.3,  # m/s max speed in continuous mode
     'continuous_speed_z': 90,    # deg/s max rotation speed
+    
+    # Speed boost (A button)
+    'boost_multiplier': 2.0,    # Multiplier when A is pressed
 }
 
-# Gimbal/Arm movement
-GIMBAL = {
-    'step_pitch': 5,         # degrees per step
-    'step_yaw': 5,           # degrees per step
-    'speed': 30,             # deg/s
-}
-
+# Robotic Arm configuration (EP Engineering robot)
 ARM = {
-    'step_x': 5,             # mm per step
-    'step_y': 5,             # mm per step
+    'step_x': 10,            # mm per step (arm extension)
+    'step_y': 10,            # mm per step (camera up/down)
 }
 
 

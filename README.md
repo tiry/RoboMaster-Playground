@@ -136,11 +136,6 @@ Test the controls without connecting to a robot:
 robomaster drive --simu
 ```
 
-**Controls:**
-- **Left stick**: Move forward/backward, strafe left/right
-- **Right stick X**: Rotate robot
-- **q/ESC**: Quit
-
 #### 3. Drive the Real Robot
 
 Connect to your robot's WiFi, then:
@@ -158,6 +153,24 @@ robomaster drive -m step       # Discrete step mode
 - `-m step`: Discrete movements
 - `-res 720p`: Video resolution (360p/540p/720p)
 
+#### Controller Mapping (Xbox)
+
+| Control | Action |
+|---------|--------|
+| **Left Stick** | Move robot (forward/back/strafe) |
+| **Right Stick X** | Rotate robot |
+| **Right Stick Y** | Arm up/down |
+| **Right Trigger** | Extend arm (X+) |
+| **Left Trigger** | Retract arm (X-) |
+| **RB (Right Bumper)** | Open gripper |
+| **LB (Left Bumper)** | Close gripper |
+| **A Button** | Speed boost (2x) |
+| **q/ESC** | Quit |
+
+**Video Overlay:**
+- Shows joystick values, arm status, gripper state
+- `[BOOST]` indicator when A is pressed (yellow)
+
 ### Configuration
 
 Edit `cli/config.py` to adjust:
@@ -165,7 +178,22 @@ Edit `cli/config.py` to adjust:
 - **Controller mapping**: Axis/button indices for your controller
 - **Deadzone**: Ignore small stick movements (default 0.15)
 - **Movement speeds**: Step sizes and max speeds
-- **Gimbal/Arm settings**: Control sensitivity
+- **Arm settings**: Step sizes for arm extension/height
+- **Speed boost**: Multiplier when A button is pressed (default 2x)
+
+**Example configuration:**
+```python
+MOVEMENT = {
+    'continuous_speed_xy': 0.3,  # m/s (normal speed)
+    'continuous_speed_z': 90,    # deg/s (rotation)
+    'boost_multiplier': 2.0,     # 2x speed when holding A
+}
+
+ARM = {
+    'step_x': 10,  # mm per step (extend/retract)
+    'step_y': 10,  # mm per step (up/down)
+}
+```
 
 ## Legacy Usage
 
