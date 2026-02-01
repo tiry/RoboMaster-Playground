@@ -82,7 +82,7 @@ MOVEMENT = {
     'move_interval': 0.1,    # seconds between move commands
     
     # For continuous mode (drive_speed API)
-    'continuous_speed_xy': 0.3,  # m/s max speed in continuous mode
+    'continuous_speed_xy': 0.6,  # m/s max speed in continuous mode
     'continuous_speed_z': 90,    # deg/s max rotation speed
     
     # Speed boost (A button)

@@ -41,10 +41,21 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
             
             # Chassis control
             if mode == 'continuous':
-                vx = state.left_y * MOVEMENT['continuous_speed_xy'] * speed_mult
-                vy = state.left_x * MOVEMENT['continuous_speed_xy'] * speed_mult
-                # Invert rotation to match expected direction (stick right = rotate right)
-                vz = -state.right_x * MOVEMENT['continuous_speed_z'] * speed_mult
+                # Calculate analog intensity (0-1) based on stick displacement
+                left_intensity = max(abs(state.left_x), abs(state.left_y))
+                right_intensity = abs(state.right_x)
+                
+                # Apply analog intensity as multiplier (more push = more speed)
+                # Combined with boost button for cumulative effect
+                xy_mult = left_intensity * speed_mult
+                z_mult = right_intensity * speed_mult
+                
+                vx = state.left_y * MOVEMENT['continuous_speed_xy'] * xy_mult
+                vy = state.left_x * MOVEMENT['continuous_speed_xy'] * xy_mult
+                # For rotation: use sign for direction, intensity already in z_mult
+                # Stick right (positive) = rotate right (positive vz in SDK)
+                rotation_sign = 1 if state.right_x > 0 else (-1 if state.right_x < 0 else 0)
+                vz = rotation_sign * MOVEMENT['continuous_speed_z'] * z_mult
                 
                 if abs(vx) > 0.01 or abs(vy) > 0.01 or abs(vz) > 0.01:
                     driver.drive_speed(vx, vy, vz)
@@ -76,11 +87,13 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                 if x_delta != 0 or y_delta != 0:
                     driver.arm_move(x_delta, y_delta)
             
-            # Gripper control
+            # Gripper control - progressive open/close while button held
             if state.lb:
-                driver.gripper_close(power=50)
+                driver.gripper_close(power=50)  # Continuously closes while held
             elif state.rb:
-                driver.gripper_open(power=50)
+                driver.gripper_open(power=50)   # Continuously opens while held
+            else:
+                driver.gripper_stop()           # Stop when no button pressed
             
             # Video display
             if show_video:
