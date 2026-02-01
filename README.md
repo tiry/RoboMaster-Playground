@@ -8,7 +8,7 @@ A playground for DJI RoboMaster robot experimentation, including simulation, CLI
 - **Joystick Control**: Drive your robot with Xbox/PS5 controllers
 - **Simulation Mode**: Test controls without a physical robot
 - **Video Streaming**: Live video feed from robot camera
-- **Robot Info**: Query battery, sensors, gimbal, arm status
+- **Robot Info**: Query battery, sensors, arm status
 - **Track Simulation**: Visualize robot movement patterns using pygame
 
 ## Prerequisites
@@ -102,6 +102,7 @@ robomaster --version           # Show version
 | `robomaster info` | Get robot information (version, battery, sensors) |
 | `robomaster video` | Open live video stream from robot camera |
 | `robomaster drive` | Drive robot with USB joystick |
+| `robomaster led` | Control robot LEDs (on/off/color) |
 | `robomaster control-config` | Configure and test your game controller |
 
 ### Get Robot Info
@@ -111,13 +112,41 @@ robomaster info                # Basic info with 1.5s sensor collection
 robomaster info -w 3           # Wait 3 seconds for more sensor data
 ```
 
-Displays:
+**Example output:**
+```
+━━━ Basic Info ━━━
+📋 Version: 01.02.0000
+🔢 Serial: 3JKCK7F001...
+
+━━━ Battery ━━━
+🔋 Level: 85%
+
+━━━ Chassis ━━━
+📍 Position: x=0.000m, y=0.000m, yaw=0.0°
+🔄 Attitude: yaw=0.0°, pitch=0.0°, roll=0.0°
+💨 Velocity: vx=0.00, vy=0.00, vz=0.00
+📊 Status: static
+
+━━━ Robotic Arm ━━━
+🦾 Position: x=100.0mm, y=50.0mm
+
+━━━ Gripper ━━━
+✊ Status: (0, 0)
+
+━━━ Distance Sensor ━━━
+📏 Front: 1234 mm
+📏 Right: 567 mm
+📏 Back:  890 mm
+📏 Left:  456 mm
+```
+
+**Displays:**
 - Robot version and serial number
 - Battery level
 - Chassis position, attitude, velocity
-- Gimbal angle (if available)
-- Robotic arm position (if available)
+- Robotic arm position (EP Engineering Robot)
 - Gripper and servo status
+- Distance sensor readings (front, right, back, left)
 
 ### Video Streaming
 
@@ -127,6 +156,23 @@ robomaster video -res 720p     # Higher resolution
 ```
 
 Press 'q' or ESC to quit.
+
+### LED Control
+
+Control robot LEDs from the command line:
+
+```bash
+robomaster led on              # White LEDs
+robomaster led on -c red       # Red LEDs
+robomaster led on -c #00FF00   # Green LEDs (hex)
+robomaster led on -c "255,128,0"  # Orange (RGB)
+robomaster led off             # Turn off
+```
+
+**Color formats:**
+- Named: `red`, `green`, `blue`, `white`, `yellow`, `cyan`, `magenta`, `orange`, `purple`, `pink`
+- Hex: `#FF0000` or `FF0000`
+- RGB: `255,0,0` or `"255 0 0"`
 
 ### Joystick Control
 
@@ -169,15 +215,29 @@ robomaster drive -m step       # Discrete step mode
 
 | Control | Action |
 |---------|--------|
-| **Left Stick** | Move robot (forward/back/strafe) |
-| **Right Stick X** | Rotate robot |
-| **Right Stick Y** | Arm up/down |
-| **Right Trigger** | Extend arm (X+) |
-| **Left Trigger** | Retract arm (X-) |
-| **RB (Right Bumper)** | Open gripper |
-| **LB (Left Bumper)** | Close gripper |
+| **Left Stick** | Move robot (forward/back/strafe) - analog intensity affects speed |
+| **Right Stick X** | Rotate robot - analog intensity affects speed |
+| **D-pad Up** | Arm up (raise camera) |
+| **D-pad Down** | Arm down (lower camera) |
+| **D-pad Right** | Arm extend (X+) |
+| **D-pad Left** | Arm retract (X-) |
+| **Y Button** | Arm recenter (home position) |
+| **X Button** | Toggle LED feedback on/off |
+| **RB (Right Bumper)** | Open gripper (hold for progressive) |
+| **LB (Left Bumper)** | Close gripper (hold for progressive) |
 | **A Button** | Speed boost (2x) |
 | **q/ESC** | Quit |
+
+**Movement Characteristics:**
+- **Analog control**: How hard you push the stick determines speed
+- **Speed boost**: A button adds 2x multiplier (cumulative with stick intensity)
+- **Gripper**: Hold button to progressively open/close, release to stop
+
+**LED Feedback (on by default):**
+- **OFF**: Robot not moving
+- **CYAN**: Robot moving
+- **RED**: Robot moving with boost (A button held)
+- **X button**: Toggle LED feedback on/off
 
 **Video Overlay:**
 - Shows joystick values, arm status, gripper state
@@ -238,15 +298,41 @@ RoboMaster-Playground/
 │   ├── config.py            # Controller and movement config
 │   ├── connection.py        # Robot connection context manager
 │   ├── control_config.py    # Controller configuration helper
+│   ├── joystick.py          # Joystick input handling
 │   ├── drive.py             # Joystick drive command
 │   ├── info.py              # Robot info command
+│   ├── led.py               # LED control command
 │   └── video.py             # Video stream command
-├── basic_simu/              # Simulation code
+├── driver/                  # Robot driver abstraction layer
+│   ├── __init__.py          # Module exports
+│   ├── robot_driver.py      # Abstract RobotDriver interface
+│   ├── sdk_driver.py        # SDK-based implementation
+│   └── simulation.py        # Pygame simulation mode
+├── basic_simu/              # Track simulation code
 │   ├── simulate_track.py    # Track simulation
 │   ├── sim_chassis.py       # Simulated chassis
 │   └── img/                 # Robot images
 └── old/                     # Legacy scripts
 ```
+
+### Architecture
+
+The driver module provides a clean abstraction for robot control:
+
+```
+cli/drive.py (CLI command)
+├── cli/joystick.py (controller input)
+└── driver/
+    ├── robot_driver.py (abstract interface)
+    │   ├── RobotDriver (ABC)
+    │   ├── ActionController (action tracking)
+    │   └── ChassisController, ArmController
+    ├── sdk_driver.py (SDK implementation)
+    │   └── SDKDriver, SDKChassisController, SDKArmController
+    └── simulation.py (no-robot testing)
+```
+
+This architecture allows implementing different communication protocols (SDK, text protocol, etc.) without changing the CLI code.
 
 ## Dependencies
 

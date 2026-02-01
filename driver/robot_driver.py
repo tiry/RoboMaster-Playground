@@ -203,6 +203,15 @@ class RobotDriver(ABC):
         """
         pass
     
+    @abstractmethod
+    def arm_recenter(self) -> bool:
+        """Move arm to center/home position.
+        
+        Returns:
+            bool: True if command was sent
+        """
+        pass
+    
     # --- Gripper control ---
     
     @abstractmethod
@@ -226,6 +235,36 @@ class RobotDriver(ABC):
     @abstractmethod
     def gripper_stop(self):
         """Stop gripper movement."""
+        pass
+    
+    # --- LED control ---
+    
+    @abstractmethod
+    def led_on(self, r: int = 255, g: int = 255, b: int = 255):
+        """Turn on all LEDs with specified color.
+        
+        Args:
+            r: Red component (0-255)
+            g: Green component (0-255)
+            b: Blue component (0-255)
+        """
+        pass
+    
+    @abstractmethod
+    def led_off(self):
+        """Turn off all LEDs."""
+        pass
+    
+    @abstractmethod
+    def led_toggle(self, r: int = 255, g: int = 255, b: int = 255) -> bool:
+        """Toggle LEDs on/off.
+        
+        Args:
+            r, g, b: Color to use when turning on
+            
+        Returns:
+            bool: True if LEDs are now on, False if off
+        """
         pass
     
     # --- Video ---

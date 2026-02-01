@@ -64,6 +64,7 @@ class SDKDriver(RobotDriver):
         self._gripper = None
         self._camera = None
         self._connected = False
+        self._led_on = False
     
     def connect(self, local_ip: Optional[str] = None, robot_ip: Optional[str] = None, 
                 verbose: bool = True) -> bool:
@@ -196,6 +197,16 @@ class SDKDriver(RobotDriver):
             return self._arm_controller.is_ready()
         return True
     
+    def arm_recenter(self) -> bool:
+        """Move arm to center/home position."""
+        if self._arm and self._arm_controller and self._arm_controller.is_ready():
+            try:
+                action = self._arm.recenter()
+                return self._arm_controller.execute_move(action)
+            except Exception as e:
+                self._arm_controller._set_status(f"Recenter error: {e}", is_moving=False)
+        return False
+    
     # --- Gripper control ---
     
     def gripper_open(self, power: int = 50):
@@ -221,6 +232,38 @@ class SDKDriver(RobotDriver):
                 self._gripper.pause()
             except:
                 pass
+    
+    # --- LED control ---
+    
+    def led_on(self, r: int = 255, g: int = 255, b: int = 255):
+        """Turn on all LEDs with specified color."""
+        if self._robot:
+            try:
+                led = self._robot.led
+                # Set all LED components
+                led.set_led(comp="all", r=r, g=g, b=b, effect="on")
+                self._led_on = True
+            except Exception:
+                pass
+    
+    def led_off(self):
+        """Turn off all LEDs."""
+        if self._robot:
+            try:
+                led = self._robot.led
+                led.set_led(comp="all", r=0, g=0, b=0, effect="off")
+                self._led_on = False
+            except Exception:
+                pass
+    
+    def led_toggle(self, r: int = 255, g: int = 255, b: int = 255) -> bool:
+        """Toggle LEDs on/off."""
+        if self._led_on:
+            self.led_off()
+            return False
+        else:
+            self.led_on(r, g, b)
+            return True
     
     # --- Video ---
     

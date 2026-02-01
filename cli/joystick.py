@@ -13,19 +13,24 @@ class JoystickState:
     
     def __init__(self, left_x=0, left_y=0, right_x=0, right_y=0,
                  left_trigger=0, right_trigger=0,
-                 lb=False, rb=False, a=False, b=False, x=False, y=False):
+                 lb=False, rb=False, a=False, b=False, x=False, y=False,
+                 dpad_up=False, dpad_down=False, dpad_left=False, dpad_right=False):
         self.left_x = left_x          # Strafe
         self.left_y = left_y          # Forward (inverted)
         self.right_x = right_x        # Rotate
-        self.right_y = right_y        # Arm Y (inverted)
-        self.left_trigger = left_trigger   # Arm retract (0-1)
-        self.right_trigger = right_trigger # Arm extend (0-1)
+        self.right_y = right_y        # Right stick Y
+        self.left_trigger = left_trigger   # Left trigger (0-1)
+        self.right_trigger = right_trigger # Right trigger (0-1)
         self.lb = lb                  # Left bumper (gripper close)
         self.rb = rb                  # Right bumper (gripper open)
         self.a = a                    # A button (speed boost)
         self.b = b                    # B button
         self.x = x                    # X button
-        self.y = y                    # Y button
+        self.y = y                    # Y button (arm recenter)
+        self.dpad_up = dpad_up        # D-pad up (arm Y up)
+        self.dpad_down = dpad_down    # D-pad down (arm Y down)
+        self.dpad_left = dpad_left    # D-pad left (arm X retract)
+        self.dpad_right = dpad_right  # D-pad right (arm X extend)
     
     def to_dict(self):
         """Convert to dictionary for backward compatibility."""
@@ -110,6 +115,15 @@ class Joystick:
         x = bool(self._joystick.get_button(JOYSTICK_BUTTONS.get('x', 2)))
         y = bool(self._joystick.get_button(JOYSTICK_BUTTONS.get('y', 3)))
         
+        # D-pad (hat)
+        dpad_up = dpad_down = dpad_left = dpad_right = False
+        if self._joystick.get_numhats() > 0:
+            hat = self._joystick.get_hat(0)  # (x, y) where x: -1=left, 1=right, y: -1=down, 1=up
+            dpad_left = hat[0] < 0
+            dpad_right = hat[0] > 0
+            dpad_down = hat[1] < 0
+            dpad_up = hat[1] > 0
+        
         return JoystickState(
             left_x=left_x,
             left_y=-left_y,          # Invert Y
@@ -123,6 +137,10 @@ class Joystick:
             b=b,
             x=x,
             y=y,
+            dpad_up=dpad_up,
+            dpad_down=dpad_down,
+            dpad_left=dpad_left,
+            dpad_right=dpad_right,
         )
     
     def close(self):

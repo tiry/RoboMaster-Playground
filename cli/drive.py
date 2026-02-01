@@ -6,10 +6,17 @@ Designed for EP Engineering Robot (arm + gripper).
 Controls:
 - Left stick: Forward/backward and strafe left/right  
 - Right stick X: Rotate left/right
-- Right stick Y: Arm camera up/down
-- Triggers: Arm extend/retract
-- Bumpers: Gripper open/close
+- D-pad up/down: Arm Y position (up/down)
+- D-pad left/right: Arm X position (retract/extend)
+- Y button: Arm recenter
+- X button: Toggle LED feedback on/off
+- Bumpers: Gripper open (RB) / close (LB)
 - A button: Speed boost
+
+LED feedback (on by default):
+- OFF when not moving
+- CYAN when moving
+- RED when moving with boost (A button)
 
 Includes simulation mode (--simu) to test controls without robot connection.
 """
@@ -28,9 +35,15 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     
     click.echo(f"\n🚗 Ready to drive! Mode: {mode}")
     click.echo("   Left stick: Move | Right stick X: Rotate")
-    click.echo("   Right stick Y: Arm up/down | Triggers: Arm extend/retract")
+    click.echo("   D-pad up/down: Arm Y | D-pad left/right: Arm X")
+    click.echo("   Y button: Arm recenter | X button: Toggle LED feedback")
     click.echo("   LB: Close gripper | RB: Open gripper | A: Speed boost")
     click.echo("   Press 'q' or ESC to quit\n")
+    
+    # LED feedback state
+    prev_x_button = False
+    led_feedback_enabled = True  # Dynamic LED feedback on by default
+    last_led_state = None  # Track: None=off, 'cyan'=moving, 'red'=boost
     
     try:
         while True:
@@ -72,20 +85,27 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                         if x != 0 or y != 0 or z != 0:
                             driver.drive_move(x, y, z, MOVEMENT['speed_xy'], MOVEMENT['speed_z'])
             
-            # Arm control
+            # Arm control (D-pad + Y button)
             if driver.is_arm_ready():
-                y_delta = 0
-                if abs(state.right_y) > 0.3:
-                    y_delta = int(state.right_y * ARM['step_y'])
-                
-                x_delta = 0
-                if state.right_trigger > 0.3:
-                    x_delta = int(state.right_trigger * ARM['step_x'])
-                elif state.left_trigger > 0.3:
-                    x_delta = -int(state.left_trigger * ARM['step_x'])
-                
-                if x_delta != 0 or y_delta != 0:
-                    driver.arm_move(x_delta, y_delta)
+                # Y button: recenter arm
+                if state.y:
+                    driver.arm_recenter()
+                else:
+                    # D-pad: move arm
+                    y_delta = 0
+                    if state.dpad_up:
+                        y_delta = ARM['step_y']
+                    elif state.dpad_down:
+                        y_delta = -ARM['step_y']
+                    
+                    x_delta = 0
+                    if state.dpad_right:
+                        x_delta = ARM['step_x']
+                    elif state.dpad_left:
+                        x_delta = -ARM['step_x']
+                    
+                    if x_delta != 0 or y_delta != 0:
+                        driver.arm_move(x_delta, y_delta)
             
             # Gripper control - progressive open/close while button held
             if state.lb:
@@ -94,6 +114,40 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                 driver.gripper_open(power=50)   # Continuously opens while held
             else:
                 driver.gripper_stop()           # Stop when no button pressed
+            
+            # LED feedback toggle (X button - edge triggered)
+            if state.x and not prev_x_button:
+                led_feedback_enabled = not led_feedback_enabled
+                if not led_feedback_enabled:
+                    driver.led_off()
+                    last_led_state = None
+                click.echo(f"💡 LED feedback {'ON' if led_feedback_enabled else 'OFF'}")
+            prev_x_button = state.x
+            
+            # Dynamic LED feedback based on movement
+            if led_feedback_enabled:
+                # Detect if moving (any significant stick input)
+                is_moving = (abs(state.left_x) > 0.2 or abs(state.left_y) > 0.2 or 
+                            abs(state.right_x) > 0.2)
+                is_boost = state.a and is_moving
+                
+                # Determine target LED state
+                if is_boost:
+                    target_led = 'red'
+                elif is_moving:
+                    target_led = 'cyan'
+                else:
+                    target_led = None  # off
+                
+                # Only update if state changed
+                if target_led != last_led_state:
+                    if target_led == 'red':
+                        driver.led_on(255, 0, 0)
+                    elif target_led == 'cyan':
+                        driver.led_on(0, 255, 255)
+                    else:
+                        driver.led_off()
+                    last_led_state = target_led
             
             # Video display
             if show_video:
@@ -136,6 +190,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
         click.echo("\n🛑 Stopping robot...")
         driver.stop()
         driver.gripper_stop()
+        driver.led_off()  # Turn off LEDs on exit
         
         if show_video:
             try:
@@ -163,12 +218,16 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, simu):
     
     Designed for EP Engineering Robot.
     
-    Left stick: Move forward/backward and strafe left/right
-    Right stick X: Rotate left/right
-    Right stick Y: Arm camera up/down
+    Controls:
+    - Left stick: Move forward/backward and strafe
+    - Right stick X: Rotate
+    - D-pad: Arm control (up/down=Y, left/right=X)
+    - Y button: Arm recenter
+    - X button: Toggle LED
+    - LB/RB: Gripper close/open
+    - A: Speed boost
     
     Use --simu for simulation mode without robot connection.
-    
     Press 'q' or ESC to quit.
     """
     

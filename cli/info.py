@@ -1,5 +1,16 @@
 """
-CLI command: Get robot information (version, battery, chassis, gimbal, arm, etc.)
+CLI command: Get robot information.
+
+Displays:
+- Basic info: version and serial number
+- Battery level
+- Chassis: position, attitude, velocity, status
+- Robotic arm position (EP Engineering Robot)
+- Gripper status (EP Engineering Robot)
+- Servo data (if available)
+- Distance sensor readings (front, right, back, left)
+
+Use --wait to increase sensor data collection time for more accurate readings.
 """
 
 import click
@@ -26,7 +37,23 @@ def _make_callback(key):
 @click.option('--robot-ip', '-r', default=None, help='Robot IP address')
 @click.option('--wait', '-w', default=1.5, help='Seconds to wait for sensor data')
 def info(local_ip, robot_ip, wait):
-    """Get information about the connected robot."""
+    """
+    Get information about the connected robot.
+    
+    \b
+    Displays:
+      - Version and serial number
+      - Battery level
+      - Chassis position, attitude, velocity, status
+      - Robotic arm position (EP Engineering Robot)
+      - Gripper status (EP Engineering Robot)
+      - Distance sensor readings (front, right, back, left)
+    
+    \b
+    Examples:
+      robomaster info          # Basic info (1.5s)
+      robomaster info -w 3     # Wait 3s for more data
+    """
     
     # Reset data
     global _data
@@ -68,13 +95,6 @@ def info(local_ip, robot_ip, wait):
         except Exception as e:
             click.echo(f"  ⚠️  Chassis: {e}")
         
-        # Gimbal (if available)
-        try:
-            gimbal = ep_robot.gimbal
-            gimbal.sub_angle(freq=10, callback=_make_callback('gimbal'))
-        except Exception as e:
-            pass  # Gimbal may not be available
-        
         # Robotic Arm (if available)
         try:
             arm = ep_robot.robotic_arm
@@ -95,6 +115,13 @@ def info(local_ip, robot_ip, wait):
             servo.sub_servo_info(freq=10, callback=_make_callback('servo'))
         except Exception as e:
             pass  # Servo may not be available
+        
+        # Distance Sensor (if available)
+        try:
+            sensor = ep_robot.sensor
+            sensor.sub_distance(freq=10, callback=_make_callback('distance'))
+        except Exception as e:
+            pass  # Sensor may not be available
         
         # Wait for data
         time.sleep(wait)
@@ -143,15 +170,6 @@ def info(local_ip, robot_ip, wait):
                 active = [l for l, v in zip(labels, status) if v]
                 click.echo(f"📊 Status: {', '.join(active) if active else 'normal'}")
             
-            # Gimbal
-            if 'gimbal' in _data:
-                click.echo("\n━━━ Gimbal ━━━")
-                gimbal = _data['gimbal']
-                if len(gimbal) >= 2:
-                    click.echo(f"🎯 Angle: pitch={gimbal[0]:.1f}°, yaw={gimbal[1]:.1f}°")
-                else:
-                    click.echo(f"🎯 Data: {gimbal}")
-            
             # Robotic Arm
             if 'arm' in _data:
                 click.echo("\n━━━ Robotic Arm ━━━")
@@ -170,6 +188,18 @@ def info(local_ip, robot_ip, wait):
             if 'servo' in _data:
                 click.echo("\n━━━ Servos ━━━")
                 click.echo(f"🔧 Data: {_data['servo']}")
+            
+            # Distance Sensor
+            if 'distance' in _data:
+                click.echo("\n━━━ Distance Sensor ━━━")
+                dist = _data['distance']
+                if isinstance(dist, (tuple, list)) and len(dist) >= 4:
+                    click.echo(f"📏 Front: {dist[0]} mm")
+                    click.echo(f"📏 Right: {dist[1]} mm")
+                    click.echo(f"📏 Back:  {dist[2]} mm")
+                    click.echo(f"📏 Left:  {dist[3]} mm")
+                else:
+                    click.echo(f"📏 Distance: {dist}")
         
         # Unsubscribe
         try:
@@ -178,11 +208,6 @@ def info(local_ip, robot_ip, wait):
             ep_robot.chassis.unsub_attitude()
             ep_robot.chassis.unsub_status()
             ep_robot.chassis.unsub_velocity()
-        except:
-            pass
-        
-        try:
-            ep_robot.gimbal.unsub_angle()
         except:
             pass
         
@@ -198,6 +223,11 @@ def info(local_ip, robot_ip, wait):
         
         try:
             ep_robot.servo.unsub_servo_info()
+        except:
+            pass
+        
+        try:
+            ep_robot.sensor.unsub_distance()
         except:
             pass
         
