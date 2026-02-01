@@ -38,4 +38,4 @@ robomaster = "cli:main"
 
 [tool.setuptools]
 py-modules = ["vector", "robotrack", "mecanum"]
-packages = ["basic_simu", "cli"]
+packages = ["basic_simu", "cli", "driver"]
