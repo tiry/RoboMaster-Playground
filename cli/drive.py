@@ -32,15 +32,9 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     click.echo("   LB: Close gripper | RB: Open gripper | A: Speed boost")
     click.echo("   Press 'q' or ESC to quit\n")
     
-    last_move_time = 0
-    move_interval = MOVEMENT['move_interval']
-    
     try:
-        import time
-        
         while True:
             state = joystick.get_state()
-            current_time = time.time()
             
             # Speed multiplier (A button for boost)
             speed_mult = MOVEMENT.get('boost_multiplier', 2.0) if state.a else 1.0
@@ -49,21 +43,23 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
             if mode == 'continuous':
                 vx = state.left_y * MOVEMENT['continuous_speed_xy'] * speed_mult
                 vy = state.left_x * MOVEMENT['continuous_speed_xy'] * speed_mult
-                vz = state.right_x * MOVEMENT['continuous_speed_z'] * speed_mult
+                # Invert rotation to match expected direction (stick right = rotate right)
+                vz = -state.right_x * MOVEMENT['continuous_speed_z'] * speed_mult
                 
                 if abs(vx) > 0.01 or abs(vy) > 0.01 or abs(vz) > 0.01:
                     driver.drive_speed(vx, vy, vz)
             
             elif mode == 'step':
-                if current_time - last_move_time >= move_interval:
+                # Only send step command if chassis is ready (previous move completed)
+                if driver.is_chassis_ready():
                     if abs(state.left_y) > 0.5 or abs(state.left_x) > 0.5 or abs(state.right_x) > 0.5:
                         x = MOVEMENT['step_forward'] if state.left_y > 0.5 else (-MOVEMENT['step_forward'] if state.left_y < -0.5 else 0)
                         y = MOVEMENT['step_strafe'] if state.left_x > 0.5 else (-MOVEMENT['step_strafe'] if state.left_x < -0.5 else 0)
-                        z = MOVEMENT['step_rotate'] if state.right_x > 0.5 else (-MOVEMENT['step_rotate'] if state.right_x < -0.5 else 0)
+                        # Invert rotation: stick right = positive z = rotate left in SDK, so negate
+                        z = -MOVEMENT['step_rotate'] if state.right_x > 0.5 else (MOVEMENT['step_rotate'] if state.right_x < -0.5 else 0)
                         
                         if x != 0 or y != 0 or z != 0:
                             driver.drive_move(x, y, z, MOVEMENT['speed_xy'], MOVEMENT['speed_z'])
-                            last_move_time = current_time
             
             # Arm control
             if driver.is_arm_ready():

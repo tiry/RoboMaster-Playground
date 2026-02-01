@@ -22,25 +22,26 @@ class RobotStatus:
     battery: Optional[int] = None
 
 
-class ArmController:
-    """Base arm controller with threaded action completion waiting.
+class ActionController:
+    """Base controller for actions that need completion tracking.
     
-    This class manages arm movement with non-blocking command execution.
-    Subclasses can override the action execution for different protocols.
+    This class manages action execution with non-blocking command execution
+    and threaded waiting for completion.
     """
     
-    def __init__(self):
+    def __init__(self, name: str = "Action"):
         self._is_moving = False
         self._lock = threading.Lock()
         self._last_status = "Ready"
+        self._name = name
     
     def is_ready(self) -> bool:
-        """Check if arm is ready for new command."""
+        """Check if ready for new command."""
         with self._lock:
             return not self._is_moving
     
     def get_status(self) -> str:
-        """Get current arm status string."""
+        """Get current status string."""
         with self._lock:
             return self._last_status
     
@@ -52,26 +53,21 @@ class ArmController:
                 self._is_moving = is_moving
     
     def _wait_for_action(self, action, timeout: float = 5.0):
-        """Background thread to wait for action completion.
-        
-        Override in subclass if action has different wait mechanism.
-        """
+        """Background thread to wait for action completion."""
         try:
             self._set_status("Moving...", is_moving=True)
             
-            # Default: try to call wait_for_completed on the action
             if hasattr(action, 'wait_for_completed'):
                 result = action.wait_for_completed(timeout=timeout)
                 self._set_status("Completed" if result else "Timeout", is_moving=False)
             else:
-                # No wait mechanism - assume instant completion
                 self._set_status("Completed", is_moving=False)
                 
         except Exception as e:
             self._set_status(f"Error: {e}", is_moving=False)
     
-    def execute_move(self, action) -> bool:
-        """Execute arm move with background completion waiting.
+    def execute_action(self, action) -> bool:
+        """Execute action with background completion waiting.
         
         Args:
             action: Action object with wait_for_completed() method
@@ -82,10 +78,27 @@ class ArmController:
         if not self.is_ready():
             return False
         
-        # Start background thread to wait for completion
         t = threading.Thread(target=self._wait_for_action, args=(action,), daemon=True)
         t.start()
         return True
+
+
+class ArmController(ActionController):
+    """Arm controller with threaded action completion waiting."""
+    
+    def __init__(self):
+        super().__init__(name="Arm")
+    
+    def execute_move(self, action) -> bool:
+        """Execute arm move (alias for execute_action)."""
+        return self.execute_action(action)
+
+
+class ChassisController(ActionController):
+    """Chassis controller for step moves with action tracking."""
+    
+    def __init__(self):
+        super().__init__(name="Chassis")
 
 
 class RobotDriver(ABC):
@@ -155,6 +168,15 @@ class RobotDriver(ABC):
     @abstractmethod
     def stop(self):
         """Stop all movement immediately."""
+        pass
+    
+    @abstractmethod
+    def is_chassis_ready(self) -> bool:
+        """Check if chassis is ready for new step move command.
+        
+        Returns:
+            bool: True if chassis is ready (no move in progress)
+        """
         pass
     
     # --- Arm control ---

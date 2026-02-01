@@ -70,8 +70,8 @@ STICK_OVERLAY_MODE = 0
 # Movement configuration
 MOVEMENT = {
     # Step sizes (for discrete moves)
-    'step_forward': 0.1,     # meters per step
-    'step_strafe': 0.1,      # meters per step
+    'step_forward': 0.2,     # meters per step
+    'step_strafe': 0.2,      # meters per step
     'step_rotate': 10,       # degrees per step
     
     # Speeds

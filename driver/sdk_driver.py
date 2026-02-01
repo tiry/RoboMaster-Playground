@@ -7,9 +7,29 @@ Uses the RoboMaster SDK to control the robot.
 from typing import Optional
 import numpy as np
 
-from .robot_driver import RobotDriver, RobotStatus, ArmController
+from .robot_driver import RobotDriver, RobotStatus, ArmController, ChassisController
 from cli.config import STICK_OVERLAY_MODE
 from cli.connection import configure_ips
+
+
+class SDKChassisController(ChassisController):
+    """SDK-specific chassis controller for step moves."""
+    
+    def __init__(self, chassis):
+        super().__init__()
+        self._chassis = chassis
+    
+    def move(self, x: float, y: float, z: float, xy_speed: float, z_speed: float) -> bool:
+        """Send chassis move command via SDK."""
+        if not self.is_ready():
+            return False
+        
+        try:
+            action = self._chassis.move(x=x, y=y, z=z, xy_speed=xy_speed, z_speed=z_speed)
+            return self.execute_action(action)
+        except Exception as e:
+            self._set_status(f"Send error: {e}", is_moving=False)
+            return False
 
 
 class SDKArmController(ArmController):
@@ -38,6 +58,7 @@ class SDKDriver(RobotDriver):
     def __init__(self):
         self._robot = None
         self._chassis = None
+        self._chassis_controller = None
         self._arm = None
         self._arm_controller = None
         self._gripper = None
@@ -70,6 +91,7 @@ class SDKDriver(RobotDriver):
             self._robot.initialize(conn_type="sta")
             
             self._chassis = self._robot.chassis
+            self._chassis_controller = SDKChassisController(self._chassis)
             
             # Set stick overlay mode
             try:
@@ -138,13 +160,17 @@ class SDKDriver(RobotDriver):
                 pass
     
     def drive_move(self, x: float, y: float, z: float, 
-                   xy_speed: float = 0.5, z_speed: float = 60):
-        """Move chassis by distance."""
-        if self._chassis:
-            try:
-                self._chassis.move(x=x, y=y, z=z, xy_speed=xy_speed, z_speed=z_speed)
-            except:
-                pass
+                   xy_speed: float = 0.5, z_speed: float = 60) -> bool:
+        """Move chassis by distance (uses action tracking)."""
+        if self._chassis_controller:
+            return self._chassis_controller.move(x, y, z, xy_speed, z_speed)
+        return False
+    
+    def is_chassis_ready(self) -> bool:
+        """Check if chassis is ready for new step move command."""
+        if self._chassis_controller:
+            return self._chassis_controller.is_ready()
+        return True
     
     def stop(self):
         """Stop all movement."""
