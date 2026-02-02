@@ -29,11 +29,13 @@ import pygame
 from .joystick import Joystick
 from .config import MOVEMENT, ARM
 from .recorder import CommandRecorder, CommandPlayer
+from .telemetry import TelemetryDisplay, setup_telemetry_subscriptions, cleanup_telemetry_subscriptions
 from driver import RobotDriver, SDKDriver, RecordingDriver, run_simulation
 
 
 def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: bool,
-               recorder: CommandRecorder = None):
+               recorder: CommandRecorder = None, telemetry_display: TelemetryDisplay = None,
+               video_resolution: str = '360p'):
     """Main drive loop using abstract driver interface.
     
     Args:
@@ -42,7 +44,17 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
         mode: 'continuous' or 'step'
         show_video: Whether to show video
         recorder: Optional CommandRecorder for recording mode
+        telemetry_display: Optional TelemetryDisplay for real-time telemetry
+        video_resolution: Video resolution for window positioning
     """
+    
+    # Video window positioning
+    VIDEO_WINDOW_NAME = "RoboMaster Drive"
+    video_widths = {'360p': 640, '540p': 960, '720p': 1280}
+    video_width = video_widths.get(video_resolution, 640)
+    window_x = 50
+    window_y = 100
+    video_positioned = False
     
     click.echo(f"\n🚗 Ready to drive! Mode: {mode}")
     click.echo("   Left stick: Move | Right stick X: Rotate")
@@ -51,7 +63,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     click.echo("   LB: Close gripper | RB: Open gripper | A: Speed boost")
     if recorder:
         click.echo("   B button: Stop recording")
-    click.echo("   Press 'q' or ESC to quit\n")
+    click.echo("   Start button: Quit | Press 'q' or ESC to quit\n")
     
     # LED feedback state
     prev_x_button = False
@@ -187,10 +199,24 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                                (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                     
                     cv2.imshow("RoboMaster Drive", img)
+                    
+                    # Position video window on first frame
+                    if not video_positioned:
+                        cv2.moveWindow("RoboMaster Drive", window_x, window_y)
+                        video_positioned = True
+            
+            # Update telemetry display
+            if telemetry_display:
+                telemetry_display.update()
             
             # B button: stop recording (if recording)
             if recorder and state.b:
                 click.echo("\n⏹️  Recording stopped (B button pressed)")
+                break
+            
+            # Start button: quit drive
+            if state.start:
+                click.echo("\n⏹️  Quit (Start button pressed)")
                 break
             
             key = cv2.waitKey(1) & 0xFF
@@ -346,7 +372,9 @@ def replay_loop(joystick: Joystick, driver: RobotDriver, player: CommandPlayer, 
               help='Record commands to file (JSON). Auto-names if just flag.')
 @click.option('--replay', default=None, 
               help='Replay commands from JSON file. Use B button for emergency stop.')
-def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay):
+@click.option('--telemetry', '-t', is_flag=True, 
+              help='Show real-time telemetry window (position, velocity, arm, gripper)')
+def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay, telemetry):
     """
     Drive the robot with a USB joystick.
     
@@ -483,8 +511,25 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay):
                 click.echo(f"⚠️  Video failed")
                 show_video = False
         
+        # Setup telemetry if requested
+        telemetry_display = None
+        if telemetry:
+            from .config import TELEMETRY
+            telemetry_display = TelemetryDisplay()
+            freq = TELEMETRY.get('frequency', 50)
+            click.echo(f"📊 Setting up telemetry ({freq} Hz)...")
+            if setup_telemetry_subscriptions(base_driver, telemetry_display, freq):
+                click.echo("✓ Telemetry subscriptions active")
+            # Get video width for positioning (if video enabled)
+            video_width = 0
+            if show_video:
+                # Map resolution to width: 360p=640, 540p=960, 720p=1280
+                video_widths = {'360p': 640, '540p': 960, '720p': 1280}
+                video_width = video_widths.get(resolution, 640)
+            telemetry_display.start(video_width)
+        
         # Run drive loop
-        drive_loop(joystick, driver, mode, show_video, recorder)
+        drive_loop(joystick, driver, mode, show_video, recorder, telemetry_display)
         
     except RuntimeError as e:
         click.echo(f"❌ {e}")
@@ -496,6 +541,12 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay):
             base_driver.unsubscribe_position()
             saved_path = recorder.save()
             click.echo(f"💾 Recording saved: {saved_path}")
+        
+        # Cleanup telemetry
+        if telemetry:
+            if telemetry_display:
+                telemetry_display.stop()
+            cleanup_telemetry_subscriptions(base_driver)
         
         base_driver.disconnect()
         joystick.close()

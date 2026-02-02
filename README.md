@@ -7,6 +7,7 @@ A playground for DJI RoboMaster robot experimentation, including simulation, CLI
 - **CLI Interface**: Command-line tools for robot control (`robomaster` command)
 - **Joystick Control**: Drive your robot with Xbox/PS5 controllers
 - **Command Recording**: Record joystick sessions for replay
+- **Real-time Telemetry**: Live sensor data display (position, velocity, arm, gripper)
 - **Simulation Mode**: Test controls without a physical robot
 - **Video Streaming**: Live video feed from robot camera
 - **Robot Info**: Query battery, sensors, arm status
@@ -213,6 +214,7 @@ robomaster drive -m step       # Discrete step mode
 - `-res 720p`: Video resolution (360p/540p/720p)
 - `--record` / `-rec`: Record commands to JSON file
 - `--replay`: Replay commands from JSON file
+- `--telemetry` / `-t`: Show real-time telemetry window
 
 #### Recording Commands
 
@@ -291,6 +293,32 @@ robomaster drive --replay patrol.json
 # 3. Press B if something goes wrong!
 ```
 
+#### Real-time Telemetry
+
+Open a separate telemetry window showing live sensor data:
+
+```bash
+robomaster drive --telemetry        # Enable telemetry window
+robomaster drive -t                 # Short form
+robomaster drive -t --no-video      # Telemetry only (no video)
+```
+
+**Telemetry window displays:**
+- **Position**: X, Y (meters), Yaw (degrees)
+- **Attitude**: Yaw, Pitch, Roll (degrees)
+- **Velocity**: vx, vy (m/s) - linear velocity
+- **IMU**: Accelerometer (m/s²) and Gyroscope (deg/s) - angular velocity
+- **Robotic Arm**: X, Y position (mm)
+
+**Configuration** (in `cli/config.py`):
+```python
+TELEMETRY = {
+    'frequency': 5,          # Hz - subscription update frequency (lower is more stable)
+    'window_width': 420,     # Telemetry window width
+    'window_height': 420,    # Telemetry window height
+}
+```
+
 #### Controller Mapping (Xbox)
 
 | Control | Action |
@@ -307,6 +335,7 @@ robomaster drive --replay patrol.json
 | **LB (Left Bumper)** | Close gripper (hold for progressive) |
 | **A Button** | Speed boost (2x) |
 | **B Button** | Stop recording / Emergency stop (replay mode) |
+| **Start Button** | Quit drive mode |
 | **q/ESC** | Quit |
 
 **Movement Characteristics:**
@@ -381,6 +410,7 @@ RoboMaster-Playground/
 │   ├── control_config.py    # Controller configuration helper
 │   ├── joystick.py          # Joystick input handling
 │   ├── recorder.py          # Command recorder for sessions
+│   ├── telemetry.py         # Real-time telemetry display
 │   ├── drive.py             # Joystick drive command
 │   ├── info.py              # Robot info command
 │   ├── led.py               # LED control command

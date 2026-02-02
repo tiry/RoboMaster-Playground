@@ -95,6 +95,13 @@ ARM = {
     'step_y': 10,            # mm per step (camera up/down)
 }
 
+# Telemetry configuration (--telemetry flag)
+TELEMETRY = {
+    'frequency': 5,          # Hz - subscription update frequency (lower is more stable)
+    'window_width': 420,     # Telemetry window width
+    'window_height': 420,    # Telemetry window height
+}
+
 
 def apply_deadzone(value, deadzone=DEADZONE):
     """Apply deadzone to joystick value (-1 to 1)."""
