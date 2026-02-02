@@ -2,6 +2,8 @@
 
 A playground for DJI RoboMaster robot experimentation, including simulation, CLI control, and joystick support. This project provides tools for controlling RoboMaster robots, simulating movement, and experimenting with mecanum wheel kinematics.
 
+<img src="pics/Screenshot.png"/>
+
 ## Features
 
 - **CLI Interface**: Command-line tools for robot control (`robomaster` command)

@@ -169,7 +169,7 @@ class TelemetryDisplay:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
         y += line_height
         pos = data['position']
-        cv2.putText(img, f"  X: {pos[0]:+.2f} m  Y: {pos[1]:+.2f} m  Yaw: {pos[2]:+.2f}°", (10, y), 
+        cv2.putText(img, f"  X: {pos[0]:+.2f} m  Y: {pos[1]:+.2f} m  Yaw: {pos[2]:+.2f}d", (10, y), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         y += line_height + section_gap
         
@@ -178,7 +178,7 @@ class TelemetryDisplay:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
         y += line_height
         att = data['attitude']
-        cv2.putText(img, f"  Yaw: {att[0]:+.2f}°  Pitch: {att[1]:+.2f}°  Roll: {att[2]:+.2f}°", (10, y), 
+        cv2.putText(img, f"  Yaw: {att[0]:+.2f}d  Pitch: {att[1]:+.2f}d  Roll: {att[2]:+.2f}d", (10, y), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         y += line_height + section_gap
         
@@ -278,15 +278,20 @@ def setup_telemetry_subscriptions(driver, telemetry: TelemetryDisplay, freq: int
     # Use wrapper functions to ensure correct callback signatures
     data = telemetry.data
     
-    # Subscribe to chassis position (SDK sends as tuple-in-tuple)
+    # Subscribe to chassis position
+    # cs=0: relative to current position, cs=1: relative to power-on position
     total_count += 1
     try:
         def position_cb(pos_tuple):
-            # SDK sends ((x, y, z),) - extract the inner tuple
+            # DEBUG: Print first 10 position callbacks
+            if data._update_count < 30:
+                print(f"  [DEBUG] Position raw: {pos_tuple}, type={type(pos_tuple)}, len={len(pos_tuple) if hasattr(pos_tuple, '__len__') else 'N/A'}")
+            # SDK callback format: (x, y, z) - 3 values
             if isinstance(pos_tuple, tuple) and len(pos_tuple) >= 3:
                 data.update_position(pos_tuple[0], pos_tuple[1], pos_tuple[2])
-        driver._chassis.sub_position(freq=freq, callback=position_cb)
-        print(f"  ✓ Position subscription OK")
+        # Use cs=1 for power-on reference frame
+        driver._chassis.sub_position(cs=1, freq=freq, callback=position_cb)
+        print(f"  ✓ Position subscription OK (cs=1: power-on reference)")
         success_count += 1
     except Exception as e:
         print(f"  ⚠️  Position subscription failed: {e}")
