@@ -65,6 +65,10 @@ class SDKDriver(RobotDriver):
         self._camera = None
         self._connected = False
         self._led_on = False
+        
+        # Position subscription
+        self._position_callback = None
+        self._current_position = (0.0, 0.0, 0.0)  # x, y, z(yaw)
     
     def connect(self, local_ip: Optional[str] = None, robot_ip: Optional[str] = None, 
                 verbose: bool = True) -> bool:
@@ -318,3 +322,44 @@ class SDKDriver(RobotDriver):
         if self._arm_controller:
             return self._arm_controller.get_status()
         return "N/A"
+    
+    # --- Position subscription ---
+    
+    def _position_handler(self, x: float, y: float, z: float):
+        """Internal handler for position subscription callback."""
+        self._current_position = (x, y, z)
+        if self._position_callback:
+            self._position_callback(x, y, z)
+    
+    def subscribe_position(self, callback=None, freq: int = 10) -> bool:
+        """Subscribe to chassis position updates.
+        
+        Args:
+            callback: Optional callback function(x, y, z) in meters, degrees
+            freq: Update frequency in Hz (default 10)
+            
+        Returns:
+            True if subscription successful
+        """
+        if self._chassis:
+            try:
+                self._position_callback = callback
+                self._chassis.sub_position(freq=freq, callback=self._position_handler)
+                return True
+            except Exception:
+                return False
+        return False
+    
+    def unsubscribe_position(self):
+        """Unsubscribe from chassis position updates."""
+        if self._chassis:
+            try:
+                self._chassis.unsub_position()
+            except:
+                pass
+        self._position_callback = None
+    
+    @property
+    def current_position(self) -> tuple:
+        """Get current position (x, y, z) from subscription."""
+        return self._current_position

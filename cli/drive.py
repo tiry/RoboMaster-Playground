@@ -19,6 +19,7 @@ LED feedback (on by default):
 - RED when moving with boost (A button)
 
 Includes simulation mode (--simu) to test controls without robot connection.
+Use --record to save commands to a JSON file for later replay.
 """
 
 import click
@@ -27,17 +28,29 @@ import pygame
 
 from .joystick import Joystick
 from .config import MOVEMENT, ARM
-from driver import RobotDriver, SDKDriver, run_simulation
+from .recorder import CommandRecorder, CommandPlayer
+from driver import RobotDriver, SDKDriver, RecordingDriver, run_simulation
 
 
-def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: bool):
-    """Main drive loop using abstract driver interface."""
+def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: bool,
+               recorder: CommandRecorder = None):
+    """Main drive loop using abstract driver interface.
+    
+    Args:
+        joystick: Joystick instance
+        driver: Robot driver
+        mode: 'continuous' or 'step'
+        show_video: Whether to show video
+        recorder: Optional CommandRecorder for recording mode
+    """
     
     click.echo(f"\n🚗 Ready to drive! Mode: {mode}")
     click.echo("   Left stick: Move | Right stick X: Rotate")
     click.echo("   D-pad up/down: Arm Y | D-pad left/right: Arm X")
     click.echo("   Y button: Arm recenter | X button: Toggle LED feedback")
     click.echo("   LB: Close gripper | RB: Open gripper | A: Speed boost")
+    if recorder:
+        click.echo("   B button: Stop recording")
     click.echo("   Press 'q' or ESC to quit\n")
     
     # LED feedback state
@@ -175,6 +188,11 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                     
                     cv2.imshow("RoboMaster Drive", img)
             
+            # B button: stop recording (if recording)
+            if recorder and state.b:
+                click.echo("\n⏹️  Recording stopped (B button pressed)")
+                break
+            
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
                 break
@@ -201,6 +219,118 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
         click.echo("✓ Robot stopped")
 
 
+def replay_loop(joystick: Joystick, driver: RobotDriver, player: CommandPlayer, show_video: bool,
+                use_position_verification: bool = True):
+    """Replay recorded commands with position verification and emergency stop.
+    
+    Args:
+        joystick: Joystick for emergency stop (B button)
+        driver: Robot driver
+        player: CommandPlayer instance
+        show_video: Whether to show video
+        use_position_verification: Wait for position match instead of time-based (default True)
+    """
+    
+    click.echo(f"\n▶️  Starting replay...")
+    click.echo(f"   Duration: {player.duration:.1f}s")
+    click.echo(f"   Commands: {len(player.commands)}")
+    click.echo(f"   Position verification: {'ON' if use_position_verification else 'OFF'}")
+    click.echo("   Press B button for EMERGENCY STOP")
+    click.echo("   Press 'q' or ESC to quit\n")
+    
+    player.start()
+    stopped_early = False
+    last_cmd = None
+    
+    try:
+        while player.is_playing:
+            # Check for emergency stop (B button)
+            state = joystick.get_state()
+            
+            if state.b:
+                click.echo("\n🛑 EMERGENCY STOP (B button pressed)")
+                stopped_early = True
+                break
+            
+            # Execute commands based on mode
+            if use_position_verification:
+                # Position-based: get next command only if position matches
+                cmd = player.get_next_command_with_position()
+                if cmd:
+                    player.execute_command(cmd, driver)
+                    last_cmd = cmd
+            else:
+                # Time-based: execute pending commands
+                pending = player.get_pending_commands()
+                for cmd in pending:
+                    player.execute_command(cmd, driver)
+                    last_cmd = cmd
+            
+            # Video display with progress
+            if show_video:
+                img = driver.get_video_frame()
+                if img is not None:
+                    # Show replay progress
+                    cv2.putText(img, "REPLAY MODE", 
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    
+                    progress = player.progress
+                    elapsed = player.elapsed
+                    cv2.putText(img, f"Progress: {progress:.0f}% ({elapsed:.1f}s / {player.duration:.1f}s)", 
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    cv2.putText(img, f"Commands: {player.current_index}/{len(player.commands)}", 
+                               (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    # Show position info
+                    pos = player.current_position
+                    cv2.putText(img, f"Pos: x={pos[0]:.2f}m y={pos[1]:.2f}m z={pos[2]:.1f}°", 
+                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                    
+                    # Show waiting status
+                    if player.is_waiting_for_position:
+                        cv2.putText(img, "⏳ Waiting for position...", 
+                                   (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                    
+                    cv2.putText(img, "Press B for EMERGENCY STOP", 
+                               (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                    
+                    cv2.imshow("RoboMaster Replay", img)
+            
+            # Check for quit key
+            key = cv2.waitKey(10) & 0xFF
+            if key == ord('q') or key == 27:
+                stopped_early = True
+                break
+            
+            # Check pygame events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    stopped_early = True
+                    break
+                    
+    except KeyboardInterrupt:
+        stopped_early = True
+    
+    finally:
+        player.stop()
+        click.echo("\n🛑 Stopping robot...")
+        driver.stop()
+        driver.gripper_stop()
+        driver.led_off()
+        
+        if show_video:
+            try:
+                cv2.destroyAllWindows()
+            except:
+                pass
+        
+        if stopped_early:
+            click.echo("✓ Replay stopped early")
+        else:
+            click.echo("✓ Replay completed")
+
+
 @click.command()
 @click.option('--local-ip', '-l', default=None, help='Local IP address')
 @click.option('--robot-ip', '-r', default=None, help='Robot IP address')
@@ -212,7 +342,11 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
               help='Video resolution')
 @click.option('--no-video', is_flag=True, help='Disable video feed')
 @click.option('--simu', is_flag=True, help='Simulation mode (no robot connection)')
-def drive(local_ip, robot_ip, mode, resolution, no_video, simu):
+@click.option('--record', '-rec', default=None, 
+              help='Record commands to file (JSON). Auto-names if just flag.')
+@click.option('--replay', default=None, 
+              help='Replay commands from JSON file. Use B button for emergency stop.')
+def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay):
     """
     Drive the robot with a USB joystick.
     
@@ -247,42 +381,123 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, simu):
         joystick.close()
         return
     
-    # Real robot mode
-    driver = SDKDriver()
+    # Replay mode
+    if replay:
+        import os
+        if not os.path.exists(replay):
+            click.echo(f"❌ Recording file not found: {replay}")
+            joystick.close()
+            return
+        
+        click.echo(f"📂 Loading recording: {replay}")
+        try:
+            player = CommandPlayer(replay)
+            click.echo(f"   Recorded at: {player.recording.get('recorded_at', 'unknown')}")
+            click.echo(f"   Duration: {player.duration:.1f}s")
+            click.echo(f"   Commands: {len(player.commands)}")
+        except Exception as e:
+            click.echo(f"❌ Failed to load recording: {e}")
+            joystick.close()
+            return
+        
+        # Connect and replay
+        base_driver = SDKDriver()
+        try:
+            click.echo("Connecting to robot...")
+            base_driver.connect(local_ip, robot_ip)
+            click.echo("✓ Connected!")
+            
+            # Subscribe to position for playback verification
+            def replay_position_callback(x, y, z):
+                player.update_position(x, y, z)
+            
+            if base_driver.subscribe_position(callback=replay_position_callback, freq=10):
+                click.echo("📍 Position tracking enabled")
+            
+            # Start video if enabled
+            show_video = not no_video
+            if show_video:
+                if base_driver.start_video(resolution):
+                    click.echo(f"📹 Video stream started ({resolution})")
+                else:
+                    click.echo(f"⚠️  Video failed")
+                    show_video = False
+            
+            # Run replay loop with position verification
+            replay_loop(joystick, base_driver, player, show_video, use_position_verification=True)
+            
+        except RuntimeError as e:
+            click.echo(f"❌ {e}")
+        
+        finally:
+            base_driver.unsubscribe_position()
+            base_driver.disconnect()
+            joystick.close()
+            click.echo("Connection closed.")
+        return
+    
+    # Real robot drive mode
+    base_driver = SDKDriver()
+    recorder = None
+    driver = base_driver
     
     try:
         click.echo("Connecting to robot...")
-        driver.connect(local_ip, robot_ip)
+        base_driver.connect(local_ip, robot_ip)
         click.echo("✓ Connected!")
         
         # Report capabilities
-        if driver.has_arm:
+        if base_driver.has_arm:
             click.echo("✓ Robotic arm detected")
         else:
             click.echo("⚠️  No robotic arm detected")
         
-        if driver.has_gripper:
+        if base_driver.has_gripper:
             click.echo("✓ Gripper detected")
         else:
             click.echo("⚠️  No gripper detected")
         
+        # Setup recording if requested
+        if record is not None:
+            # If record is empty string (just flag), auto-generate name
+            output_path = record if record else None
+            recorder = CommandRecorder(output_path)
+            driver = RecordingDriver(base_driver, recorder)
+            
+            # Subscribe to position for recording
+            def record_position_callback(x, y, z):
+                recorder.update_position(x, y, z)
+            
+            if base_driver.subscribe_position(callback=record_position_callback, freq=10):
+                click.echo("📍 Position tracking enabled")
+            
+            recorder.start()
+            click.echo(f"🔴 Recording to: {recorder.output_path}")
+        
         # Start video if enabled
         show_video = not no_video
         if show_video:
-            if driver.start_video(resolution):
+            if base_driver.start_video(resolution):
                 click.echo(f"📹 Video stream started ({resolution})")
             else:
                 click.echo(f"⚠️  Video failed")
                 show_video = False
         
         # Run drive loop
-        drive_loop(joystick, driver, mode, show_video)
+        drive_loop(joystick, driver, mode, show_video, recorder)
         
     except RuntimeError as e:
         click.echo(f"❌ {e}")
     
     finally:
-        driver.disconnect()
+        # Save recording if active
+        if recorder and recorder.is_recording:
+            recorder.stop()
+            base_driver.unsubscribe_position()
+            saved_path = recorder.save()
+            click.echo(f"💾 Recording saved: {saved_path}")
+        
+        base_driver.disconnect()
         joystick.close()
         click.echo("Connection closed.")
 

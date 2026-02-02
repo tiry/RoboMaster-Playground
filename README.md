@@ -6,6 +6,7 @@ A playground for DJI RoboMaster robot experimentation, including simulation, CLI
 
 - **CLI Interface**: Command-line tools for robot control (`robomaster` command)
 - **Joystick Control**: Drive your robot with Xbox/PS5 controllers
+- **Command Recording**: Record joystick sessions for replay
 - **Simulation Mode**: Test controls without a physical robot
 - **Video Streaming**: Live video feed from robot camera
 - **Robot Info**: Query battery, sensors, arm status
@@ -210,6 +211,85 @@ robomaster drive -m step       # Discrete step mode
 - `-m continuous`: Real-time speed control (default)
 - `-m step`: Discrete movements
 - `-res 720p`: Video resolution (360p/540p/720p)
+- `--record` / `-rec`: Record commands to JSON file
+- `--replay`: Replay commands from JSON file
+
+#### Recording Commands
+
+Record your drive session for later replay:
+
+```bash
+robomaster drive --record                    # Auto-generate filename
+robomaster drive --record my_session.json    # Custom filename
+robomaster drive -rec patrol.json            # Short form
+```
+
+**During recording:**
+- Drive normally with joystick
+- **B button** = Stop recording and save
+- 'q' or ESC also stops and saves
+
+The recording captures all commands with timestamps:
+- Chassis movements (speed, position)
+- Arm movements (x, y position)
+- Gripper actions (open/close/stop)
+
+**Example recording output:**
+```json
+{
+  "version": "1.0",
+  "recorded_at": "2026-02-01T19:00:00",
+  "duration": 45.2,
+  "command_count": 156,
+  "commands": [
+    {
+      "time": 0.0,
+      "type": "chassis_speed",
+      "vx": 0.1, "vy": 0, "vz": 0,
+      "expected_pos": {"x": 0.0, "y": 0.0, "z": 0.0}
+    },
+    {"time": 0.5, "type": "gripper_open", "power": 50},
+    ...
+  ]
+}
+```
+
+Commands include `expected_pos` (x/y in meters, z in degrees) for position-based replay.
+
+Redundant commands are automatically optimized (e.g., repeated identical speeds are removed).
+
+#### Replaying Commands
+
+Replay a previously recorded session:
+
+```bash
+robomaster drive --replay my_session.json    # Replay recording
+robomaster drive --replay patrol.json        # Another example
+```
+
+**During replay:**
+- Joystick controls are disabled (robot follows recording)
+- **B button** = EMERGENCY STOP (immediately stops robot)
+- **Position verification**: Robot waits to reach recorded position before next command (99% accuracy)
+- Video overlay shows: progress, current position, "waiting for position" status
+- Press 'q' or ESC to quit
+
+**Position verification (99% accuracy):**
+- During recording: Current chassis position (x, y, yaw) is saved with each command
+- During replay: Next command only executes when robot reaches expected position
+- Tolerance: 1cm for x/y, 1° for rotation
+- This ensures accurate path replay even with timing variations
+
+**Example workflow:**
+```bash
+# 1. Record a patrol route
+robomaster drive --record patrol.json
+
+# 2. Replay the patrol
+robomaster drive --replay patrol.json
+
+# 3. Press B if something goes wrong!
+```
 
 #### Controller Mapping (Xbox)
 
@@ -226,6 +306,7 @@ robomaster drive -m step       # Discrete step mode
 | **RB (Right Bumper)** | Open gripper (hold for progressive) |
 | **LB (Left Bumper)** | Close gripper (hold for progressive) |
 | **A Button** | Speed boost (2x) |
+| **B Button** | Stop recording / Emergency stop (replay mode) |
 | **q/ESC** | Quit |
 
 **Movement Characteristics:**
@@ -299,6 +380,7 @@ RoboMaster-Playground/
 │   ├── connection.py        # Robot connection context manager
 │   ├── control_config.py    # Controller configuration helper
 │   ├── joystick.py          # Joystick input handling
+│   ├── recorder.py          # Command recorder for sessions
 │   ├── drive.py             # Joystick drive command
 │   ├── info.py              # Robot info command
 │   ├── led.py               # LED control command
@@ -307,6 +389,7 @@ RoboMaster-Playground/
 │   ├── __init__.py          # Module exports
 │   ├── robot_driver.py      # Abstract RobotDriver interface
 │   ├── sdk_driver.py        # SDK-based implementation
+│   ├── recording.py         # Recording driver wrapper
 │   └── simulation.py        # Pygame simulation mode
 ├── basic_simu/              # Track simulation code
 │   ├── simulate_track.py    # Track simulation
