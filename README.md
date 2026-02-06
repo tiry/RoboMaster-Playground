@@ -155,20 +155,25 @@ robomaster info -w 3           # Wait 3 seconds for more sensor data
 ### Video Streaming
 
 ```bash
-robomaster video               # Robot camera (360p default)
-robomaster video -res 720p     # Robot camera (720p)
-robomaster video --static      # USB webcam (device from config)
+robomaster video               # BOTH cameras (robot + webcam) - default
+robomaster video --robot       # Robot camera only
+robomaster video --static      # USB webcam only
 robomaster video --static -d 2 # USB webcam at /dev/video2
+robomaster video -res 720p     # Both cameras, robot at 720p
 ```
 
 Press 'q' or ESC to quit.
 
-**Static Webcam Mode:**
+**Dual Camera Mode (default):**
 
-Use `--static` to stream from an external USB webcam instead of the robot camera. This is useful for:
-- Fixed overhead cameras for training data collection
-- Multiple camera setups
-- Testing without robot connection
+By default, opens BOTH the robot camera and USB webcam in separate side-by-side windows. This is useful for:
+- VLA training data collection (ego-view + overhead view)
+- Multi-camera recording setups
+- Monitoring robot from multiple angles
+
+**Single Camera Modes:**
+- `--robot`: Robot camera only (no USB webcam)
+- `--static`: USB webcam only (no robot connection needed)
 
 Configure the webcam device in `cli/config.py`:
 ```python
@@ -235,13 +240,26 @@ robomaster drive -m step       # Discrete step mode
 
 **Options:**
 - `--simu`: Simulation mode (no robot connection)
-- `--no-video`: Disable video feed
+- `--no-video`: Disable all video feeds (robot + webcam)
+- `--no-webcam`: Disable USB webcam only (robot video still on)
+- `-d N`: Webcam device index
 - `-m continuous`: Real-time speed control (default)
 - `-m step`: Discrete movements
 - `-res 720p`: Video resolution (360p/540p/720p)
 - `--record` / `-rec`: Record commands to JSON file
 - `--replay`: Replay commands from JSON file
 - `--telemetry` / `-t`: Show real-time telemetry window
+
+**Dual Camera Mode (default):**
+
+By default, the drive command opens BOTH robot camera and USB webcam (if available). The webcam opens gracefully - if not found, it simply skips without error:
+
+```bash
+robomaster drive                     # Robot + Webcam (default, webcam optional)
+robomaster drive --no-webcam         # Robot camera only
+robomaster drive --no-video          # No video at all
+robomaster drive -d 2                # Use webcam at /dev/video2
+```
 
 #### Recording Commands
 

@@ -102,6 +102,11 @@ TELEMETRY = {
     'window_height': 420,    # Telemetry window height
 }
 
+# Robot camera configuration
+ROBOT_VIDEO = {
+    'default_resolution': '720p',  # Default resolution: '360p', '540p', or '720p'
+}
+
 # Webcam configuration (--static flag for external USB webcam)
 # Use 'v4l2-ctl --list-devices' or 'ls /dev/video*' to find device index
 WEBCAM = {

@@ -27,25 +27,27 @@ import cv2
 import pygame
 
 from .joystick import Joystick
-from .config import MOVEMENT, ARM
+from .config import MOVEMENT, ARM, ROBOT_VIDEO
 from .recorder import CommandRecorder, CommandPlayer
 from .telemetry import TelemetryDisplay, setup_telemetry_subscriptions, cleanup_telemetry_subscriptions
+from .video import open_webcam
 from driver import RobotDriver, SDKDriver, RecordingDriver, run_simulation
 
 
 def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: bool,
                recorder: CommandRecorder = None, telemetry_display: TelemetryDisplay = None,
-               video_resolution: str = '360p'):
+               video_resolution: str = '360p', webcam_cap=None):
     """Main drive loop using abstract driver interface.
     
     Args:
         joystick: Joystick instance
         driver: Robot driver
         mode: 'continuous' or 'step'
-        show_video: Whether to show video
+        show_video: Whether to show robot video
         recorder: Optional CommandRecorder for recording mode
         telemetry_display: Optional TelemetryDisplay for real-time telemetry
         video_resolution: Video resolution for window positioning
+        webcam_cap: Optional cv2.VideoCapture for USB webcam
     """
     
     # Video window positioning
@@ -55,6 +57,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     window_x = 50
     window_y = 100
     video_positioned = False
+    webcam_positioned = False
     
     click.echo(f"\n🚗 Ready to drive! Mode: {mode}")
     click.echo("   Left stick: Move | Right stick X: Rotate")
@@ -174,7 +177,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                         driver.led_off()
                     last_led_state = target_led
             
-            # Video display
+            # Video display (robot camera)
             if show_video:
                 img = driver.get_video_frame()
                 if img is not None:
@@ -204,6 +207,16 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                     if not video_positioned:
                         cv2.moveWindow("RoboMaster Drive", window_x, window_y)
                         video_positioned = True
+            
+            # USB Webcam display (if provided)
+            if webcam_cap is not None:
+                ret, webcam_img = webcam_cap.read()
+                if ret and webcam_img is not None:
+                    cv2.imshow("USB Webcam", webcam_img)
+                    if not webcam_positioned:
+                        # Position to the right of robot video
+                        cv2.moveWindow("USB Webcam", window_x + video_width + 20, window_y)
+                        webcam_positioned = True
             
             # Update telemetry display
             if telemetry_display:
@@ -357,16 +370,23 @@ def replay_loop(joystick: Joystick, driver: RobotDriver, player: CommandPlayer, 
             click.echo("✓ Replay completed")
 
 
+# Get default resolution from config
+_default_resolution = ROBOT_VIDEO.get('default_resolution', '360p')
+
+
 @click.command()
 @click.option('--local-ip', '-l', default=None, help='Local IP address')
 @click.option('--robot-ip', '-r', default=None, help='Robot IP address')
 @click.option('--mode', '-m', default='continuous', 
               type=click.Choice(['continuous', 'step']),
               help='Movement mode: continuous (real-time) or step (discrete)')
-@click.option('--resolution', '-res', default='360p',
+@click.option('--resolution', '-res', default=_default_resolution,
               type=click.Choice(['360p', '540p', '720p']),
-              help='Video resolution')
-@click.option('--no-video', is_flag=True, help='Disable video feed')
+              help=f'Video resolution (default: {_default_resolution})')
+@click.option('--no-video', is_flag=True, help='Disable all video feeds (robot + webcam)')
+@click.option('--no-webcam', is_flag=True, help='Disable USB webcam only (robot video still on)')
+@click.option('--device', '-d', default=None, type=int,
+              help='USB webcam device index (overrides config, e.g., 0 for /dev/video0)')
 @click.option('--simu', is_flag=True, help='Simulation mode (no robot connection)')
 @click.option('--record', '-rec', default=None, 
               help='Record commands to file (JSON). Auto-names if just flag.')
@@ -374,7 +394,7 @@ def replay_loop(joystick: Joystick, driver: RobotDriver, player: CommandPlayer, 
               help='Replay commands from JSON file. Use B button for emergency stop.')
 @click.option('--telemetry', '-t', is_flag=True, 
               help='Show real-time telemetry window (position, velocity, arm, gripper)')
-def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay, telemetry):
+def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, simu, record, replay, telemetry):
     """
     Drive the robot with a USB joystick.
     
@@ -511,6 +531,20 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay, 
                 click.echo(f"⚠️  Video failed")
                 show_video = False
         
+        # Setup USB webcam by default (unless --no-video or --no-webcam)
+        webcam_cap = None
+        if not no_video and not no_webcam:
+            from .config import WEBCAM
+            webcam_device = device if device is not None else WEBCAM.get('device_index', 0)
+            click.echo(f"📹 Opening USB webcam (device {webcam_device})...")
+            webcam_cap = open_webcam(device)
+            if webcam_cap is None:
+                click.echo(f"⚠️  Webcam not available at device {webcam_device} (skipping)")
+            else:
+                actual_width = int(webcam_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(webcam_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                click.echo(f"✓ Webcam opened ({actual_width}x{actual_height})")
+        
         # Setup telemetry if requested
         telemetry_display = None
         if telemetry:
@@ -529,7 +563,8 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay, 
             telemetry_display.start(video_width)
         
         # Run drive loop
-        drive_loop(joystick, driver, mode, show_video, recorder, telemetry_display)
+        drive_loop(joystick, driver, mode, show_video, recorder, telemetry_display, 
+                   video_resolution=resolution, webcam_cap=webcam_cap)
         
     except RuntimeError as e:
         click.echo(f"❌ {e}")
@@ -541,6 +576,10 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, simu, record, replay, 
             base_driver.unsubscribe_position()
             saved_path = recorder.save()
             click.echo(f"💾 Recording saved: {saved_path}")
+        
+        # Cleanup webcam
+        if webcam_cap is not None:
+            webcam_cap.release()
         
         # Cleanup telemetry
         if telemetry:
