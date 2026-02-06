@@ -19,7 +19,7 @@ LED feedback (on by default):
 - RED when moving with boost (A button)
 
 Includes simulation mode (--simu) to test controls without robot connection.
-Use --record to save commands to a JSON file for later replay.
+Use --record to save teleoperation data in LeRobot format for VLA training.
 """
 
 import click
@@ -27,15 +27,15 @@ import cv2
 import pygame
 
 from .joystick import Joystick
-from .config import MOVEMENT, ARM, ROBOT_VIDEO
-from .recorder import CommandRecorder, CommandPlayer
+from .config import MOVEMENT, ARM, ROBOT_VIDEO, LEROBOT
+from .lerobot_recorder import LeRobotRecorder
 from .telemetry import TelemetryDisplay, setup_telemetry_subscriptions, cleanup_telemetry_subscriptions
 from .video import open_webcam
-from driver import RobotDriver, SDKDriver, RecordingDriver, run_simulation
+from driver import RobotDriver, SDKDriver, run_simulation
 
 
 def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: bool,
-               recorder: CommandRecorder = None, telemetry_display: TelemetryDisplay = None,
+               lerobot_recorder: LeRobotRecorder = None, telemetry_display: TelemetryDisplay = None,
                video_resolution: str = '360p', webcam_cap=None):
     """Main drive loop using abstract driver interface.
     
@@ -44,7 +44,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
         driver: Robot driver
         mode: 'continuous' or 'step'
         show_video: Whether to show robot video
-        recorder: Optional CommandRecorder for recording mode
+        lerobot_recorder: Optional LeRobotRecorder for recording mode
         telemetry_display: Optional TelemetryDisplay for real-time telemetry
         video_resolution: Video resolution for window positioning
         webcam_cap: Optional cv2.VideoCapture for USB webcam
@@ -64,14 +64,17 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     click.echo("   D-pad up/down: Arm Y | D-pad left/right: Arm X")
     click.echo("   Y button: Arm recenter | X button: Toggle LED feedback")
     click.echo("   LB: Close gripper | RB: Open gripper | A: Speed boost")
-    if recorder:
-        click.echo("   B button: Stop recording")
+    if lerobot_recorder:
+        click.echo("   Back button: Save recording | q/ESC: Abort recording")
     click.echo("   Start button: Quit | Press 'q' or ESC to quit\n")
     
     # LED feedback state
     prev_x_button = False
     led_feedback_enabled = True  # Dynamic LED feedback on by default
     last_led_state = None  # Track: None=off, 'cyan'=moving, 'red'=boost
+    
+    # Recording result
+    recording_saved = False
     
     try:
         while True:
@@ -81,6 +84,8 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
             speed_mult = MOVEMENT.get('boost_multiplier', 2.0) if state.a else 1.0
             
             # Chassis control
+            vx, vy, vz = 0, 0, 0  # Track for recording
+            
             if mode == 'continuous':
                 # Calculate analog intensity (0-1) based on stick displacement
                 left_intensity = max(abs(state.left_x), abs(state.left_y))
@@ -100,6 +105,14 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                 
                 if abs(vx) > 0.01 or abs(vy) > 0.01 or abs(vz) > 0.01:
                     driver.drive_speed(vx, vy, vz)
+                    
+                    # Record movement command
+                    if lerobot_recorder:
+                        lerobot_recorder.add_command({
+                            'move_x': vx,
+                            'move_y': vy,
+                            'rotate_z': vz
+                        })
             
             elif mode == 'step':
                 # Only send step command if chassis is ready (previous move completed)
@@ -112,36 +125,65 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                         
                         if x != 0 or y != 0 or z != 0:
                             driver.drive_move(x, y, z, MOVEMENT['speed_xy'], MOVEMENT['speed_z'])
+                            
+                            # Record step command as velocity equivalent
+                            if lerobot_recorder:
+                                lerobot_recorder.add_command({
+                                    'move_x': x * 10,  # Scale step to approximate velocity
+                                    'move_y': y * 10,
+                                    'rotate_z': z
+                                })
             
             # Arm control (D-pad + Y button)
+            arm_x_delta, arm_y_delta = 0, 0
+            arm_recenter = False
+            
             if driver.is_arm_ready():
                 # Y button: recenter arm
                 if state.y:
                     driver.arm_recenter()
+                    arm_recenter = True
                 else:
                     # D-pad: move arm
-                    y_delta = 0
                     if state.dpad_up:
-                        y_delta = ARM['step_y']
+                        arm_y_delta = ARM['step_y']
                     elif state.dpad_down:
-                        y_delta = -ARM['step_y']
+                        arm_y_delta = -ARM['step_y']
                     
-                    x_delta = 0
                     if state.dpad_right:
-                        x_delta = ARM['step_x']
+                        arm_x_delta = ARM['step_x']
                     elif state.dpad_left:
-                        x_delta = -ARM['step_x']
+                        arm_x_delta = -ARM['step_x']
                     
-                    if x_delta != 0 or y_delta != 0:
-                        driver.arm_move(x_delta, y_delta)
+                    if arm_x_delta != 0 or arm_y_delta != 0:
+                        driver.arm_move(arm_x_delta, arm_y_delta)
+            
+            # Record arm commands
+            if lerobot_recorder and (arm_x_delta != 0 or arm_y_delta != 0 or arm_recenter):
+                lerobot_recorder.add_command({
+                    'arm_x': arm_x_delta,
+                    'arm_y': arm_y_delta,
+                    'arm_recenter': 1 if arm_recenter else 0
+                })
             
             # Gripper control - progressive open/close while button held
+            gripper_open_power, gripper_close_power = 0, 0
+            
             if state.lb:
-                driver.gripper_close(power=50)  # Continuously closes while held
+                driver.gripper_close(power=50)
+                gripper_close_power = 50
             elif state.rb:
-                driver.gripper_open(power=50)   # Continuously opens while held
+                driver.gripper_open(power=50)
+                gripper_open_power = 50
             else:
-                driver.gripper_stop()           # Stop when no button pressed
+                driver.gripper_stop()
+            
+            # Record gripper commands
+            if lerobot_recorder and (gripper_open_power > 0 or gripper_close_power > 0):
+                lerobot_recorder.add_command({
+                    'gripper_open': gripper_open_power,
+                    'gripper_close': gripper_close_power
+                })
             
             # LED feedback toggle (X button - edge triggered)
             if state.x and not prev_x_button:
@@ -178,9 +220,12 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                     last_led_state = target_led
             
             # Video display (robot camera)
+            robot_frame = None
             if show_video:
                 img = driver.get_video_frame()
                 if img is not None:
+                    robot_frame = img.copy()  # Save for recording
+                    
                     cv2.putText(img, f"L: ({state.left_x:.1f}, {state.left_y:.1f})", 
                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                     cv2.putText(img, f"R: ({state.right_x:.1f}, {state.right_y:.1f})", 
@@ -201,6 +246,11 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                     cv2.putText(img, f"Gripper: {gripper_text}", 
                                (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                     
+                    # Show recording indicator
+                    if lerobot_recorder and lerobot_recorder.is_recording:
+                        cv2.putText(img, f"🔴 REC [{lerobot_recorder.frame_count}]", 
+                                   (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                    
                     cv2.imshow("RoboMaster Drive", img)
                     
                     # Position video window on first frame
@@ -208,40 +258,58 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                         cv2.moveWindow("RoboMaster Drive", window_x, window_y)
                         video_positioned = True
             
+            # Add robot frame to recorder
+            if lerobot_recorder and robot_frame is not None:
+                lerobot_recorder.add_robot_frame(robot_frame)
+            
             # USB Webcam display (if provided)
+            webcam_frame = None
             if webcam_cap is not None:
                 ret, webcam_img = webcam_cap.read()
                 if ret and webcam_img is not None:
+                    webcam_frame = webcam_img.copy()  # Save for recording
                     cv2.imshow("USB Webcam", webcam_img)
                     if not webcam_positioned:
                         # Position to the right of robot video
                         cv2.moveWindow("USB Webcam", window_x + video_width + 20, window_y)
                         webcam_positioned = True
             
+            # Add webcam frame to recorder
+            if lerobot_recorder and webcam_frame is not None:
+                lerobot_recorder.add_webcam_frame(webcam_frame)
+            
             # Update telemetry display
             if telemetry_display:
                 telemetry_display.update()
             
-            # B button: stop recording (if recording)
-            if recorder and state.b:
-                click.echo("\n⏹️  Recording stopped (B button pressed)")
+            # Back button: save recording (if recording)
+            if lerobot_recorder and state.back:
+                click.echo("\n💾 Saving recording (Back button pressed)...")
+                recording_saved = lerobot_recorder.stop()
                 break
             
             # Start button: quit drive
             if state.start:
                 click.echo("\n⏹️  Quit (Start button pressed)")
+                if lerobot_recorder and lerobot_recorder.is_recording:
+                    lerobot_recorder.abort()
                 break
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
+                if lerobot_recorder and lerobot_recorder.is_recording:
+                    lerobot_recorder.abort()
                 break
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    if lerobot_recorder and lerobot_recorder.is_recording:
+                        lerobot_recorder.abort()
                     break
                     
     except KeyboardInterrupt:
-        pass
+        if lerobot_recorder and lerobot_recorder.is_recording:
+            lerobot_recorder.abort()
     
     finally:
         click.echo("\n🛑 Stopping robot...")
@@ -256,122 +324,14 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                 pass
         
         click.echo("✓ Robot stopped")
-
-
-def replay_loop(joystick: Joystick, driver: RobotDriver, player: CommandPlayer, show_video: bool,
-                use_position_verification: bool = True):
-    """Replay recorded commands with position verification and emergency stop.
     
-    Args:
-        joystick: Joystick for emergency stop (B button)
-        driver: Robot driver
-        player: CommandPlayer instance
-        show_video: Whether to show video
-        use_position_verification: Wait for position match instead of time-based (default True)
-    """
-    
-    click.echo(f"\n▶️  Starting replay...")
-    click.echo(f"   Duration: {player.duration:.1f}s")
-    click.echo(f"   Commands: {len(player.commands)}")
-    click.echo(f"   Position verification: {'ON' if use_position_verification else 'OFF'}")
-    click.echo("   Press B button for EMERGENCY STOP")
-    click.echo("   Press 'q' or ESC to quit\n")
-    
-    player.start()
-    stopped_early = False
-    last_cmd = None
-    
-    try:
-        while player.is_playing:
-            # Check for emergency stop (B button)
-            state = joystick.get_state()
-            
-            if state.b:
-                click.echo("\n🛑 EMERGENCY STOP (B button pressed)")
-                stopped_early = True
-                break
-            
-            # Execute commands based on mode
-            if use_position_verification:
-                # Position-based: get next command only if position matches
-                cmd = player.get_next_command_with_position()
-                if cmd:
-                    player.execute_command(cmd, driver)
-                    last_cmd = cmd
-            else:
-                # Time-based: execute pending commands
-                pending = player.get_pending_commands()
-                for cmd in pending:
-                    player.execute_command(cmd, driver)
-                    last_cmd = cmd
-            
-            # Video display with progress
-            if show_video:
-                img = driver.get_video_frame()
-                if img is not None:
-                    # Show replay progress
-                    cv2.putText(img, "REPLAY MODE", 
-                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    
-                    progress = player.progress
-                    elapsed = player.elapsed
-                    cv2.putText(img, f"Progress: {progress:.0f}% ({elapsed:.1f}s / {player.duration:.1f}s)", 
-                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                    
-                    cv2.putText(img, f"Commands: {player.current_index}/{len(player.commands)}", 
-                               (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                    
-                    # Show position info
-                    pos = player.current_position
-                    cv2.putText(img, f"Pos: x={pos[0]:.2f}m y={pos[1]:.2f}m z={pos[2]:.1f}°", 
-                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                    
-                    # Show waiting status
-                    if player.is_waiting_for_position:
-                        cv2.putText(img, "⏳ Waiting for position...", 
-                                   (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-                    
-                    cv2.putText(img, "Press B for EMERGENCY STOP", 
-                               (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-                    
-                    cv2.imshow("RoboMaster Replay", img)
-            
-            # Check for quit key
-            key = cv2.waitKey(10) & 0xFF
-            if key == ord('q') or key == 27:
-                stopped_early = True
-                break
-            
-            # Check pygame events
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    stopped_early = True
-                    break
-                    
-    except KeyboardInterrupt:
-        stopped_early = True
-    
-    finally:
-        player.stop()
-        click.echo("\n🛑 Stopping robot...")
-        driver.stop()
-        driver.gripper_stop()
-        driver.led_off()
-        
-        if show_video:
-            try:
-                cv2.destroyAllWindows()
-            except:
-                pass
-        
-        if stopped_early:
-            click.echo("✓ Replay stopped early")
-        else:
-            click.echo("✓ Replay completed")
+    return recording_saved
 
 
 # Get default resolution from config
 _default_resolution = ROBOT_VIDEO.get('default_resolution', '360p')
+_default_fps = LEROBOT.get('default_fps', 30)
+_default_task = LEROBOT.get('default_task', 'do something with Robomaster')
 
 
 @click.command()
@@ -388,18 +348,22 @@ _default_resolution = ROBOT_VIDEO.get('default_resolution', '360p')
 @click.option('--device', '-d', default=None, type=int,
               help='USB webcam device index (overrides config, e.g., 0 for /dev/video0)')
 @click.option('--simu', is_flag=True, help='Simulation mode (no robot connection)')
-@click.option('--record', '-rec', default=None, 
-              help='Record commands to file (JSON). Auto-names if just flag.')
-@click.option('--replay', default=None, 
-              help='Replay commands from JSON file. Use B button for emergency stop.')
+@click.option('--record', is_flag=True, help='Record teleoperation data in LeRobot format')
+@click.option('--task', default=None, 
+              help=f'Episode task description (default: "{_default_task}")')
+@click.option('--fps', default=None, type=int,
+              help=f'Recording FPS (default: {_default_fps})')
+@click.option('--dry-run', is_flag=True, help='Print frame info instead of saving (use with --record)')
 @click.option('--telemetry', '-t', is_flag=True, 
               help='Show real-time telemetry window (position, velocity, arm, gripper)')
-def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, simu, record, replay, telemetry):
+def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, simu, 
+          record, task, fps, dry_run, telemetry):
     """
     Drive the robot with a USB joystick.
     
     Designed for EP Engineering Robot.
     
+    \b
     Controls:
     - Left stick: Move forward/backward and strafe
     - Right stick X: Rotate
@@ -408,6 +372,12 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
     - X button: Toggle LED
     - LB/RB: Gripper close/open
     - A: Speed boost
+    - Back button: Save recording (when --record is active)
+    
+    \b
+    Recording:
+    --record starts LeRobot recording. Press Back to save the episode.
+    q/ESC aborts without saving.
     
     Use --simu for simulation mode without robot connection.
     Press 'q' or ESC to quit.
@@ -429,65 +399,11 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
         joystick.close()
         return
     
-    # Replay mode
-    if replay:
-        import os
-        if not os.path.exists(replay):
-            click.echo(f"❌ Recording file not found: {replay}")
-            joystick.close()
-            return
-        
-        click.echo(f"📂 Loading recording: {replay}")
-        try:
-            player = CommandPlayer(replay)
-            click.echo(f"   Recorded at: {player.recording.get('recorded_at', 'unknown')}")
-            click.echo(f"   Duration: {player.duration:.1f}s")
-            click.echo(f"   Commands: {len(player.commands)}")
-        except Exception as e:
-            click.echo(f"❌ Failed to load recording: {e}")
-            joystick.close()
-            return
-        
-        # Connect and replay
-        base_driver = SDKDriver()
-        try:
-            click.echo("Connecting to robot...")
-            base_driver.connect(local_ip, robot_ip)
-            click.echo("✓ Connected!")
-            
-            # Subscribe to position for playback verification
-            def replay_position_callback(x, y, z):
-                player.update_position(x, y, z)
-            
-            if base_driver.subscribe_position(callback=replay_position_callback, freq=10):
-                click.echo("📍 Position tracking enabled")
-            
-            # Start video if enabled
-            show_video = not no_video
-            if show_video:
-                if base_driver.start_video(resolution):
-                    click.echo(f"📹 Video stream started ({resolution})")
-                else:
-                    click.echo(f"⚠️  Video failed")
-                    show_video = False
-            
-            # Run replay loop with position verification
-            replay_loop(joystick, base_driver, player, show_video, use_position_verification=True)
-            
-        except RuntimeError as e:
-            click.echo(f"❌ {e}")
-        
-        finally:
-            base_driver.unsubscribe_position()
-            base_driver.disconnect()
-            joystick.close()
-            click.echo("Connection closed.")
-        return
-    
     # Real robot drive mode
     base_driver = SDKDriver()
-    recorder = None
-    driver = base_driver
+    lerobot_recorder = None
+    webcam_cap = None
+    telemetry_display = None
     
     try:
         click.echo("Connecting to robot...")
@@ -505,22 +421,25 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
         else:
             click.echo("⚠️  No gripper detected")
         
-        # Setup recording if requested
-        if record is not None:
-            # If record is empty string (just flag), auto-generate name
-            output_path = record if record else None
-            recorder = CommandRecorder(output_path)
-            driver = RecordingDriver(base_driver, recorder)
+        # Setup LeRobot recording if requested
+        if record:
+            recording_fps = fps or _default_fps
+            recording_task = task or _default_task
             
-            # Subscribe to position for recording
-            def record_position_callback(x, y, z):
-                recorder.update_position(x, y, z)
+            lerobot_recorder = LeRobotRecorder(
+                fps=recording_fps,
+                task=recording_task,
+                dry_run=dry_run
+            )
             
-            if base_driver.subscribe_position(callback=record_position_callback, freq=10):
-                click.echo("📍 Position tracking enabled")
+            if dry_run:
+                click.echo(f"🔴 [DRY RUN] Recording at {recording_fps} FPS")
+            else:
+                click.echo(f"🔴 Recording at {recording_fps} FPS")
+            click.echo(f"   Task: {recording_task}")
+            click.echo("   Press Back button to save, q/ESC to abort")
             
-            recorder.start()
-            click.echo(f"🔴 Recording to: {recorder.output_path}")
+            lerobot_recorder.start()
         
         # Start video if enabled
         show_video = not no_video
@@ -532,7 +451,6 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
                 show_video = False
         
         # Setup USB webcam by default (unless --no-video or --no-webcam)
-        webcam_cap = None
         if not no_video and not no_webcam:
             from .config import WEBCAM
             webcam_device = device if device is not None else WEBCAM.get('device_index', 0)
@@ -546,7 +464,6 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
                 click.echo(f"✓ Webcam opened ({actual_width}x{actual_height})")
         
         # Setup telemetry if requested
-        telemetry_display = None
         if telemetry:
             from .config import TELEMETRY
             telemetry_display = TelemetryDisplay()
@@ -563,20 +480,13 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
             telemetry_display.start(video_width)
         
         # Run drive loop
-        drive_loop(joystick, driver, mode, show_video, recorder, telemetry_display, 
+        drive_loop(joystick, base_driver, mode, show_video, lerobot_recorder, telemetry_display, 
                    video_resolution=resolution, webcam_cap=webcam_cap)
         
     except RuntimeError as e:
         click.echo(f"❌ {e}")
     
     finally:
-        # Save recording if active
-        if recorder and recorder.is_recording:
-            recorder.stop()
-            base_driver.unsubscribe_position()
-            saved_path = recorder.save()
-            click.echo(f"💾 Recording saved: {saved_path}")
-        
         # Cleanup webcam
         if webcam_cap is not None:
             webcam_cap.release()

@@ -15,7 +15,7 @@ class JoystickState:
                  left_trigger=0, right_trigger=0,
                  lb=False, rb=False, a=False, b=False, x=False, y=False,
                  dpad_up=False, dpad_down=False, dpad_left=False, dpad_right=False,
-                 start=False):
+                 start=False, back=False):
         self.left_x = left_x          # Strafe
         self.left_y = left_y          # Forward (inverted)
         self.right_x = right_x        # Rotate
@@ -33,6 +33,7 @@ class JoystickState:
         self.dpad_left = dpad_left    # D-pad left (arm X retract)
         self.dpad_right = dpad_right  # D-pad right (arm X extend)
         self.start = start            # Start button (quit drive)
+        self.back = back              # Back button (save recording)
     
     def to_dict(self):
         """Convert to dictionary for backward compatibility."""
@@ -117,6 +118,7 @@ class Joystick:
         x = bool(self._joystick.get_button(JOYSTICK_BUTTONS.get('x', 2)))
         y = bool(self._joystick.get_button(JOYSTICK_BUTTONS.get('y', 3)))
         start = bool(self._joystick.get_button(JOYSTICK_BUTTONS.get('start', 7)))
+        back = bool(self._joystick.get_button(JOYSTICK_BUTTONS.get('back', 6)))
         
         # D-pad (hat)
         dpad_up = dpad_down = dpad_left = dpad_right = False
@@ -145,6 +147,7 @@ class Joystick:
             dpad_left=dpad_left,
             dpad_right=dpad_right,
             start=start,
+            back=back,
         )
     
     def close(self):

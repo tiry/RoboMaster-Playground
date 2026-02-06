@@ -118,6 +118,35 @@ WEBCAM = {
     'fps': 30,               # Target frame rate
 }
 
+# LeRobot recording configuration (--record flag)
+LEROBOT = {
+    # Dataset settings
+    'dataset_root': './records',              # Local storage path
+    'dataset_name': 'robomaster_teleop',      # Dataset name
+    'default_fps': 30,                        # Recording FPS
+    'default_task': 'do something with Robomaster',  # Default episode description
+    
+    # Buffer settings
+    'buffer_duration': 2.0,                   # Seconds of frames to buffer (max 5s)
+    
+    # Time offsets for camera synchronization (< 1s)
+    'robot_camera_offset': 0.0,               # Seconds offset for robot camera
+    'static_camera_offset': 0.0,              # Seconds offset for USB webcam
+    
+    # Action normalization ranges (all values map to [-1, 1])
+    # Format: (min_value, max_value) - raw values outside range are clipped
+    'action_ranges': {
+        'move_x': (-2.0, 2.0),                # m/s range for forward/backward
+        'move_y': (-2.0, 2.0),                # m/s range for strafe
+        'rotate_z': (-180.0, 180.0),          # deg/s range for rotation
+        'gripper_open': (0, 100),             # Power % for open gripper
+        'gripper_close': (0, 100),            # Power % for close gripper
+        'arm_recenter': (0, 1),               # Boolean (0 or 1)
+        'arm_x': (80, 220),                   # mm range for arm X
+        'arm_y': (-40, 90),                   # mm range for arm Y
+    },
+}
+
 
 def apply_deadzone(value, deadzone=DEADZONE):
     """Apply deadzone to joystick value (-1 to 1)."""

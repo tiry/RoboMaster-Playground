@@ -7,7 +7,6 @@ Provides abstract interfaces and implementations for different protocols.
 from .robot_driver import RobotDriver, RobotStatus, ActionController, ArmController, ChassisController
 from .sdk_driver import SDKDriver, SDKArmController, SDKChassisController
 from .simulation import run_simulation
-from .recording import RecordingDriver
 
 __all__ = [
     'RobotDriver',
@@ -19,5 +18,4 @@ __all__ = [
     'SDKArmController',
     'SDKChassisController',
     'run_simulation',
-    'RecordingDriver',
 ]

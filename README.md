@@ -17,11 +17,13 @@ A playground for DJI RoboMaster robot experimentation, including simulation, CLI
 
 ## Prerequisites
 
-- **Python 3.8+** (tested with 3.8, 3.9, 3.10, 3.11, 3.12)
+- **Python 3.10 or 3.11** (required for LeRobot compatibility)
 - DJI RoboMaster EP/S1 robot (for physical robot control)
 - WiFi connection to the robot (for physical robot control)
 - FFmpeg development libraries (for video decoding)
 - USB game controller (for joystick control)
+
+> **📖 For detailed step-by-step installation instructions, see [INSTALL.md](INSTALL.md)**
 
 ## Installation
 
@@ -246,8 +248,10 @@ robomaster drive -m step       # Discrete step mode
 - `-m continuous`: Real-time speed control (default)
 - `-m step`: Discrete movements
 - `-res 720p`: Video resolution (360p/540p/720p)
-- `--record` / `-rec`: Record commands to JSON file
-- `--replay`: Replay commands from JSON file
+- `--record`: Record teleoperation data in LeRobot format
+- `--task "desc"`: Episode task description (with --record)
+- `--fps N`: Recording FPS (with --record)
+- `--dry-run`: Print frame info without saving (with --record)
 - `--telemetry` / `-t`: Show real-time telemetry window
 
 **Dual Camera Mode (default):**
@@ -261,81 +265,62 @@ robomaster drive --no-video          # No video at all
 robomaster drive -d 2                # Use webcam at /dev/video2
 ```
 
-#### Recording Commands
+#### Recording (LeRobot Format)
 
-Record your drive session for later replay:
+Record teleoperation data in LeRobot format for VLA training:
 
 ```bash
-robomaster drive --record                    # Auto-generate filename
-robomaster drive --record my_session.json    # Custom filename
-robomaster drive -rec patrol.json            # Short form
+robomaster drive --record                    # Start recording
+robomaster drive --record --task "Pick up the red cube"  # With task description
+robomaster drive --record --fps 15           # Recording at 15 FPS
+robomaster drive --record --dry-run          # Print frames without saving
 ```
 
 **During recording:**
 - Drive normally with joystick
-- **B button** = Stop recording and save
-- 'q' or ESC also stops and saves
+- **Back button** = Save episode and stop recording
+- **q/ESC** = Abort recording without saving
 
-The recording captures all commands with timestamps:
-- Chassis movements (speed, position)
-- Arm movements (x, y position)
-- Gripper actions (open/close/stop)
+**Recording captures:**
+- Robot camera frames (ego-view)
+- USB webcam frames (overhead/external view)
+- All commands: chassis velocity, arm position, gripper power
 
-**Example recording output:**
-```json
-{
-  "version": "1.0",
-  "recorded_at": "2026-02-01T19:00:00",
-  "duration": 45.2,
-  "command_count": 156,
-  "commands": [
-    {
-      "time": 0.0,
-      "type": "chassis_speed",
-      "vx": 0.1, "vy": 0, "vz": 0,
-      "expected_pos": {"x": 0.0, "y": 0.0, "z": 0.0}
-    },
-    {"time": 0.5, "type": "gripper_open", "power": 50},
-    ...
-  ]
-}
-```
-
-Commands include `expected_pos` (x/y in meters, z in degrees) for position-based replay.
-
-Redundant commands are automatically optimized (e.g., repeated identical speeds are removed).
-
-#### Replaying Commands
-
-Replay a previously recorded session:
-
-```bash
-robomaster drive --replay my_session.json    # Replay recording
-robomaster drive --replay patrol.json        # Another example
-```
-
-**During replay:**
-- Joystick controls are disabled (robot follows recording)
-- **B button** = EMERGENCY STOP (immediately stops robot)
-- **Position verification**: Robot waits to reach recorded position before next command (99% accuracy)
-- Video overlay shows: progress, current position, "waiting for position" status
-- Press 'q' or ESC to quit
-
-**Position verification (99% accuracy):**
-- During recording: Current chassis position (x, y, yaw) is saved with each command
-- During replay: Next command only executes when robot reaches expected position
-- Tolerance: 1cm for x/y, 1° for rotation
-- This ensures accurate path replay even with timing variations
+**LeRobot Dataset Features:**
+- Normalized actions: All values normalized to [-1, 1]
+- Dual video streams: `observation.images.robot` and `observation.images.top`
+- Action tensor: 9-dimensional (move_x, move_y, rotate_z, gripper_open, gripper_close, arm_recenter, arm_x, arm_y, unused)
 
 **Example workflow:**
 ```bash
-# 1. Record a patrol route
-robomaster drive --record patrol.json
+# 1. Start recording
+robomaster drive --record --task "Stack the blocks"
 
-# 2. Replay the patrol
-robomaster drive --replay patrol.json
+# 2. Perform the task with joystick
 
-# 3. Press B if something goes wrong!
+# 3. Press Back button to save episode
+
+# Dataset saved to: ./records/robomaster_teleop/
+```
+
+**Configuration** (in `cli/config.py`):
+```python
+LEROBOT = {
+    'dataset_root': './records',              # Dataset storage path
+    'dataset_name': 'robomaster_teleop',      # Dataset name
+    'default_fps': 30,                        # Recording FPS
+    'default_task': 'do something with Robomaster',  # Default task
+    'buffer_duration': 2.0,                   # Frame buffer size
+    'robot_camera_offset': 0.0,               # Camera sync offset
+    'static_camera_offset': 0.0,              # Webcam sync offset
+    'action_ranges': {...},                   # Normalization ranges
+}
+```
+
+**Install LeRobot:**
+```bash
+pip install lerobot
+# Or: pip install -e ".[recording]"
 ```
 
 #### Real-time Telemetry
@@ -379,7 +364,7 @@ TELEMETRY = {
 | **RB (Right Bumper)** | Open gripper (hold for progressive) |
 | **LB (Left Bumper)** | Close gripper (hold for progressive) |
 | **A Button** | Speed boost (2x) |
-| **B Button** | Stop recording / Emergency stop (replay mode) |
+| **Back Button** | Save recording (with --record) |
 | **Start Button** | Quit drive mode |
 | **q/ESC** | Quit |
 
@@ -454,7 +439,7 @@ RoboMaster-Playground/
 │   ├── connection.py        # Robot connection context manager
 │   ├── control_config.py    # Controller configuration helper
 │   ├── joystick.py          # Joystick input handling
-│   ├── recorder.py          # Command recorder for sessions
+│   ├── lerobot_recorder.py  # LeRobot dataset recorder for VLA training
 │   ├── telemetry.py         # Real-time telemetry display
 │   ├── drive.py             # Joystick drive command
 │   ├── info.py              # Robot info command
