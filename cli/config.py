@@ -102,6 +102,17 @@ TELEMETRY = {
     'window_height': 420,    # Telemetry window height
 }
 
+# Webcam configuration (--static flag for external USB webcam)
+# Use 'v4l2-ctl --list-devices' or 'ls /dev/video*' to find device index
+WEBCAM = {
+    'device_index': 0,       # USB device index (0 = /dev/video0, 1 = /dev/video1, etc.)
+#    'width': 1920,            # Frame width
+#    'height': 1080,           # Frame height
+    'width': 1280,            # Frame width
+    'height': 720,           # Frame height
+    'fps': 30,               # Target frame rate
+}
+
 
 def apply_deadzone(value, deadzone=DEADZONE):
     """Apply deadzone to joystick value (-1 to 1)."""

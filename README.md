@@ -155,11 +155,36 @@ robomaster info -w 3           # Wait 3 seconds for more sensor data
 ### Video Streaming
 
 ```bash
-robomaster video               # Open video stream (360p default)
-robomaster video -res 720p     # Higher resolution
+robomaster video               # Robot camera (360p default)
+robomaster video -res 720p     # Robot camera (720p)
+robomaster video --static      # USB webcam (device from config)
+robomaster video --static -d 2 # USB webcam at /dev/video2
 ```
 
 Press 'q' or ESC to quit.
+
+**Static Webcam Mode:**
+
+Use `--static` to stream from an external USB webcam instead of the robot camera. This is useful for:
+- Fixed overhead cameras for training data collection
+- Multiple camera setups
+- Testing without robot connection
+
+Configure the webcam device in `cli/config.py`:
+```python
+WEBCAM = {
+    'device_index': 0,  # 0 = /dev/video0, 1 = /dev/video1, etc.
+    'width': 640,       # Frame width
+    'height': 480,      # Frame height
+    'fps': 30,          # Target frame rate
+}
+```
+
+Find available devices:
+```bash
+ls /dev/video*           # List video devices
+v4l2-ctl --list-devices  # Detailed device info
+```
 
 ### LED Control
 
