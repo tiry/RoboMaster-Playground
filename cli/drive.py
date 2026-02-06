@@ -65,7 +65,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     click.echo("   Y button: Arm recenter | X button: Toggle LED feedback")
     click.echo("   LB: Close gripper | RB: Open gripper | A: Speed boost")
     if lerobot_recorder:
-        click.echo("   Back button: Save recording | q/ESC: Abort recording")
+        click.echo("   Back button: Start/Stop recording episode")
     click.echo("   Start button: Quit | Press 'q' or ESC to quit\n")
     
     # LED feedback state
@@ -73,8 +73,9 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     led_feedback_enabled = True  # Dynamic LED feedback on by default
     last_led_state = None  # Track: None=off, 'cyan'=moving, 'red'=boost
     
-    # Recording result
-    recording_saved = False
+    # Recording state
+    prev_back_button = False
+    episodes_saved = 0
     
     try:
         while True:
@@ -247,9 +248,17 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                                (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                     
                     # Show recording indicator
-                    if lerobot_recorder and lerobot_recorder.is_recording:
-                        cv2.putText(img, f"🔴 REC [{lerobot_recorder.frame_count}]", 
-                                   (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                    if lerobot_recorder:
+                        if lerobot_recorder.is_recording:
+                            # Recording in progress (red)
+                            cv2.putText(img, f"REC [{lerobot_recorder.frame_count}]", 
+                                       (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                            # Draw red circle
+                            cv2.circle(img, (160, 205), 8, (0, 0, 255), -1)
+                        else:
+                            # Ready to record (gray), show episodes count
+                            text = f"READY (Episodes: {episodes_saved})"
+                            cv2.putText(img, text, (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (128, 128, 128), 2)
                     
                     cv2.imshow("RoboMaster Drive", img)
                     
@@ -282,11 +291,21 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
             if telemetry_display:
                 telemetry_display.update()
             
-            # Back button: save recording (if recording)
-            if lerobot_recorder and state.back:
-                click.echo("\n💾 Saving recording (Back button pressed)...")
-                recording_saved = lerobot_recorder.stop()
-                break
+            # Back button: toggle recording (edge triggered)
+            if lerobot_recorder and state.back and not prev_back_button:
+                if lerobot_recorder.is_recording:
+                    # Stop and save episode
+                    click.echo("\n💾 Saving episode...")
+                    if lerobot_recorder.stop():
+                        episodes_saved += 1
+                        click.echo(f"✓ Episode {episodes_saved} saved")
+                    else:
+                        click.echo("⚠️  Episode not saved (dry run or error)")
+                else:
+                    # Start new episode
+                    click.echo("\n🔴 Starting new episode...")
+                    lerobot_recorder.start()
+            prev_back_button = state.back
             
             # Start button: quit drive
             if state.start:
@@ -324,8 +343,10 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                 pass
         
         click.echo("✓ Robot stopped")
+        if lerobot_recorder:
+            click.echo(f"📼 Episodes saved this session: {episodes_saved}")
     
-    return recording_saved
+    return episodes_saved
 
 
 # Get default resolution from config
@@ -372,15 +393,16 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
     - X button: Toggle LED
     - LB/RB: Gripper close/open
     - A: Speed boost
-    - Back button: Save recording (when --record is active)
+    - Back button: Start/Stop episode recording (when --record)
     
     \b
-    Recording:
-    --record starts LeRobot recording. Press Back to save the episode.
-    q/ESC aborts without saving.
+    Recording (--record):
+    Press Back button to start recording an episode. Drive the robot
+    to perform a task. Press Back again to stop and save the episode.
+    You can record multiple episodes in a single session.
+    Press q/ESC to quit (current episode is aborted if recording).
     
     Use --simu for simulation mode without robot connection.
-    Press 'q' or ESC to quit.
     """
     
     # Initialize joystick
@@ -433,13 +455,12 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
             )
             
             if dry_run:
-                click.echo(f"🔴 [DRY RUN] Recording at {recording_fps} FPS")
+                click.echo(f"📼 [DRY RUN] Recording mode at {recording_fps} FPS")
             else:
-                click.echo(f"🔴 Recording at {recording_fps} FPS")
+                click.echo(f"📼 Recording mode at {recording_fps} FPS")
             click.echo(f"   Task: {recording_task}")
-            click.echo("   Press Back button to save, q/ESC to abort")
-            
-            lerobot_recorder.start()
+            click.echo("   Press Back button to start/stop episode recording")
+            # Don't auto-start - user will press Back to start first episode
         
         # Start video if enabled
         show_video = not no_video

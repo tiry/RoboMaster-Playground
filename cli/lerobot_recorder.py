@@ -277,7 +277,10 @@ class LeRobotRecorder:
         self.buffer.clear()
         
         if not self.dry_run:
-            self._init_dataset()
+            # Only init dataset if not already loaded
+            if self._dataset is None:
+                self._init_dataset()
+            # Else reuse existing dataset for appending episodes
         
         # Start recording thread
         self._thread = threading.Thread(target=self._recording_loop, daemon=True)
@@ -340,7 +343,12 @@ class LeRobotRecorder:
         """Initialize LeRobot dataset."""
         try:
             import torch
-            from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+            # Import path changed in lerobot 0.4.x
+            try:
+                from lerobot.datasets.lerobot_dataset import LeRobotDataset
+            except ImportError:
+                # Fallback for older versions
+                from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
             
             dataset_root = Path(LEROBOT.get('dataset_root', './records')).expanduser()
             dataset_name = LEROBOT.get('dataset_name', 'robomaster_teleop')
@@ -354,34 +362,58 @@ class LeRobotRecorder:
             robot_dims = {'360p': (360, 640), '540p': (540, 960), '720p': (720, 1280)}
             robot_height, robot_width = robot_dims.get(robot_res, (360, 640))
             
+            # Note: LeRobot auto-adds 'task' feature, don't define it manually
+            # Use tuples for shape (not lists) - LeRobot 0.4.x requirement
             features = {
                 "observation.images.top": {
                     "dtype": "video",
-                    "shape": [webcam_height, webcam_width, 3],
+                    "shape": (webcam_height, webcam_width, 3),
                     "names": ["height", "width", "channels"]
                 },
                 "observation.images.robot": {
                     "dtype": "video",
-                    "shape": [robot_height, robot_width, 3],
+                    "shape": (robot_height, robot_width, 3),
                     "names": ["height", "width", "channels"]
                 },
                 "action": {
                     "dtype": "float32",
-                    "shape": [9],
+                    "shape": (9,),
                     "names": ACTION_NAMES
                 },
             }
             
-            # Create or load dataset
-            dataset_path = dataset_root / dataset_name
-            if dataset_path.exists():
-                # Load existing dataset to append
+            # LeRobot 0.4.x: dataset_root IS the dataset location
+            # repo_id is stored in metadata and used when loading
+            # Check if meta folder exists (indicates existing dataset)
+            meta_path = dataset_root / "meta"
+            
+            if meta_path.exists():
+                # Load existing dataset to append episodes
+                print(f"📁 Loading existing dataset: {dataset_root}")
                 self._dataset = LeRobotDataset(
                     repo_id=dataset_name,
                     root=dataset_root,
                 )
+            elif dataset_root.exists() and any(dataset_root.iterdir()):
+                # Folder exists with content but no meta - corrupted or incomplete
+                import shutil
+                print(f"⚠️  Removing corrupted dataset: {dataset_root}")
+                shutil.rmtree(dataset_root, ignore_errors=True)
+                
+                print(f"📁 Creating new dataset: {dataset_root}")
+                dataset_root.parent.mkdir(parents=True, exist_ok=True)
+                
+                self._dataset = LeRobotDataset.create(
+                    repo_id=dataset_name,
+                    root=dataset_root,
+                    fps=self.fps,
+                    features=features,
+                )
             else:
                 # Create new dataset
+                print(f"📁 Creating new dataset: {dataset_root}")
+                dataset_root.parent.mkdir(parents=True, exist_ok=True)
+                
                 self._dataset = LeRobotDataset.create(
                     repo_id=dataset_name,
                     root=dataset_root,
@@ -389,7 +421,7 @@ class LeRobotRecorder:
                     features=features,
                 )
             
-            print(f"📁 Dataset: {dataset_path}")
+            print(f"✓ Dataset ready")
             
         except ImportError:
             print("⚠️  lerobot not installed. Install with: pip install lerobot")
@@ -463,16 +495,19 @@ class LeRobotRecorder:
             
             # Normalize actions
             normalized = normalize_action(raw_actions)
-            action_tensor = torch.tensor(normalized, dtype=torch.float32)
             
             # Prepare frame data
+            # Note: LeRobot 0.4.x expects action as np.ndarray and task per frame
             frame_data = {
-                "action": action_tensor
+                "action": np.array(normalized, dtype=np.float32),  # Must be np.ndarray
+                "task": self.task,     # Task is required per frame
             }
             
             # Add images (use black frame if missing)
+            # Convert BGR (OpenCV) to RGB (video codec)
             if robot_frame is not None:
-                frame_data["observation.images.robot"] = robot_frame
+                # Convert BGR to RGB
+                frame_data["observation.images.robot"] = robot_frame[:, :, ::-1].copy()
             else:
                 # Create black frame
                 robot_res = ROBOT_VIDEO.get('default_resolution', '360p')
@@ -481,7 +516,8 @@ class LeRobotRecorder:
                 frame_data["observation.images.robot"] = np.zeros((h, w, 3), dtype=np.uint8)
             
             if webcam_frame is not None:
-                frame_data["observation.images.top"] = webcam_frame
+                # Convert BGR to RGB
+                frame_data["observation.images.top"] = webcam_frame[:, :, ::-1].copy()
             else:
                 # Create black frame
                 h = WEBCAM.get('height', 480)
@@ -499,8 +535,9 @@ class LeRobotRecorder:
             return False
         
         try:
-            self._dataset.save_episode(task=self.task)
-            self._dataset.consolidate()
+            # LeRobot 0.4.x save_episode doesn't take task param
+            self._dataset.save_episode()
+            # Note: consolidate() removed in LeRobot 0.4.x - save_episode handles it
             
             dataset_root = Path(LEROBOT.get('dataset_root', './records')).expanduser()
             dataset_name = LEROBOT.get('dataset_name', 'robomaster_teleop')

@@ -121,7 +121,7 @@ WEBCAM = {
 # LeRobot recording configuration (--record flag)
 LEROBOT = {
     # Dataset settings
-    'dataset_root': './records',              # Local storage path
+    'dataset_root': './records/lerobot',      # Local storage path (must not have other files)
     'dataset_name': 'robomaster_teleop',      # Dataset name
     'default_fps': 30,                        # Recording FPS
     'default_task': 'do something with Robomaster',  # Default episode description
