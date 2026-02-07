@@ -291,6 +291,16 @@ robomaster drive --record --dry-run          # Print frames without saving
 - Dual video streams: `observation.images.robot` and `observation.images.top`
 - Action tensor: 9-dimensional (move_x, move_y, rotate_z, gripper_open, gripper_close, arm_recenter, arm_x, arm_y, unused)
 
+**Example DataSet**
+
+[TiryML/RoboMasterLeRobot-experiment](https://huggingface.co/datasets/TiryML/RoboMasterLeRobot-experiment)
+
+
+<img src="./pics/vizu_dataset.png"> </img>
+
+[Viewer for TiryML/RoboMasterLeRobot-experiment](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2FTiryML%2FRoboMasterLeRobot-experiment%2Fepisode_0%3Ft%3D3)
+
+
 **Example workflow:**
 ```bash
 # 1. Start recording

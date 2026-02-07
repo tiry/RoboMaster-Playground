@@ -95,6 +95,12 @@ ARM = {
     'step_y': 10,            # mm per step (camera up/down)
 }
 
+# LED Flash configuration (X button in drive mode)
+LED_FLASH = {
+    'color': (255, 0, 0),    # RGB color for flash (red by default)
+    'duration': 0.3,         # Flash duration in seconds
+}
+
 # Telemetry configuration (--telemetry flag)
 TELEMETRY = {
     'frequency': 5,          # Hz - subscription update frequency (lower is more stable)
@@ -144,6 +150,7 @@ LEROBOT = {
         'arm_recenter': (0, 1),               # Boolean (0 or 1)
         'arm_x': (80, 220),                   # mm range for arm X
         'arm_y': (-40, 90),                   # mm range for arm Y
+        'led_flash': (0, 1),                  # Boolean (0 or 1) for LED flash
     },
 }
 

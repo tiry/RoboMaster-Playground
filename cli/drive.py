@@ -10,6 +10,7 @@ Controls:
 - D-pad left/right: Arm X position (retract/extend)
 - Y button: Arm recenter
 - X button: Toggle LED feedback on/off
+- B button: Flash LED (configurable color)
 - Bumpers: Gripper open (RB) / close (LB)
 - A button: Speed boost
 
@@ -25,9 +26,10 @@ Use --record to save teleoperation data in LeRobot format for VLA training.
 import click
 import cv2
 import pygame
+import time
 
 from .joystick import Joystick
-from .config import MOVEMENT, ARM, ROBOT_VIDEO, LEROBOT
+from .config import MOVEMENT, ARM, ROBOT_VIDEO, LEROBOT, LED_FLASH
 from .lerobot_recorder import LeRobotRecorder
 from .telemetry import TelemetryDisplay, setup_telemetry_subscriptions, cleanup_telemetry_subscriptions
 from .video import open_webcam
@@ -62,7 +64,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     click.echo(f"\n🚗 Ready to drive! Mode: {mode}")
     click.echo("   Left stick: Move | Right stick X: Rotate")
     click.echo("   D-pad up/down: Arm Y | D-pad left/right: Arm X")
-    click.echo("   Y button: Arm recenter | X button: Toggle LED feedback")
+    click.echo("   Y button: Arm recenter | X button: Toggle LED | B button: Flash LED")
     click.echo("   LB: Close gripper | RB: Open gripper | A: Speed boost")
     if lerobot_recorder:
         click.echo("   Back button: Start/Stop recording episode")
@@ -70,8 +72,10 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
     
     # LED feedback state
     prev_x_button = False
+    prev_b_button = False
     led_feedback_enabled = True  # Dynamic LED feedback on by default
     last_led_state = None  # Track: None=off, 'cyan'=moving, 'red'=boost
+    led_flash_end_time = 0  # Time when flash should end
     
     # Recording state
     prev_back_button = False
@@ -186,7 +190,7 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                     'gripper_close': gripper_close_power
                 })
             
-            # LED feedback toggle (X button - edge triggered)
+            # X button: Toggle LED feedback on/off (edge triggered)
             if state.x and not prev_x_button:
                 led_feedback_enabled = not led_feedback_enabled
                 if not led_feedback_enabled:
@@ -195,8 +199,28 @@ def drive_loop(joystick: Joystick, driver: RobotDriver, mode: str, show_video: b
                 click.echo(f"💡 LED feedback {'ON' if led_feedback_enabled else 'OFF'}")
             prev_x_button = state.x
             
-            # Dynamic LED feedback based on movement
-            if led_feedback_enabled:
+            # B button: Flash LED (edge triggered)
+            if state.b and not prev_b_button:
+                # Start LED flash
+                flash_color = LED_FLASH.get('color', (255, 0, 0))
+                flash_duration = LED_FLASH.get('duration', 0.3)
+                driver.led_on(flash_color[0], flash_color[1], flash_color[2])
+                led_flash_end_time = time.time() + flash_duration
+                last_led_state = 'flash'
+                
+                # Record led_flash command
+                if lerobot_recorder:
+                    lerobot_recorder.add_command({'led_flash': 1})
+            prev_b_button = state.b
+            
+            # Check if flash should end
+            if led_flash_end_time > 0 and time.time() >= led_flash_end_time:
+                driver.led_off()
+                led_flash_end_time = 0
+                last_led_state = None
+            
+            # Dynamic LED feedback based on movement (only when not flashing)
+            if led_feedback_enabled and led_flash_end_time == 0:
                 # Detect if moving (any significant stick input)
                 is_moving = (abs(state.left_x) > 0.2 or abs(state.left_y) > 0.2 or 
                             abs(state.right_x) > 0.2)
@@ -390,7 +414,7 @@ def drive(local_ip, robot_ip, mode, resolution, no_video, no_webcam, device, sim
     - Right stick X: Rotate
     - D-pad: Arm control (up/down=Y, left/right=X)
     - Y button: Arm recenter
-    - X button: Toggle LED
+    - X button: Toggle LED | B button: Flash LED
     - LB/RB: Gripper close/open
     - A: Speed boost
     - Back button: Start/Stop episode recording (when --record)

@@ -20,7 +20,7 @@ from .config import LEROBOT, WEBCAM, ROBOT_VIDEO
 ACTION_NAMES = [
     'move_x', 'move_y', 'rotate_z', 
     'gripper_open', 'gripper_close', 'arm_recenter',
-    'arm_x', 'arm_y', 'unused'
+    'arm_x', 'arm_y', 'led_flash'
 ]
 
 
@@ -195,7 +195,7 @@ class FrameBuffer:
                 if start_time < ts <= end_time:
                     for key, value in cmd.items():
                         if key in aggregated:
-                            if key == 'arm_recenter':
+                            if key in ('arm_recenter', 'led_flash'):
                                 # Boolean OR: if any is True (1), result is 1
                                 if value:
                                     aggregated[key] = 1.0
